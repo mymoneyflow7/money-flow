@@ -632,7 +632,7 @@ function renderBudgets(){
     const over = amt>0 && sp>amt;
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
       <div class="row">
-        <div>${esc(c.name)}</div>
+        <div>${esc(c.name)}${b&&b.note?`<div class="sub" style="font-size:12px;color:var(--muted)">${esc(b.note)}</div>`:''}</div>
         <div style="text-align:right">
           <span class="${over?'neg':''}" style="font-weight:600">${fmt(sp)}</span>
           <span class="muted"> / </span>
@@ -671,17 +671,20 @@ function editBudget(catId){
     <p class="muted">${monthLabel(S.budMonth)}</p>
     <label>Monthly limit (${base()})</label>
     <input id="bud-amt" type="number" step="0.01" min="0" inputmode="decimal" value="${b?b.amount:''}" placeholder="0 = no budget">
+    <label>Description (optional)</label>
+    <input id="bud-note" value="${b?esc(b.note||''):''}" placeholder="e.g. groceries + eating out, school fees">
     <button class="primary" onclick="saveBudget('${catId}')">Save</button>
   `);
 }
 async function saveBudget(catId){
   const amt = parseFloat($('bud-amt').value)||0;
+  const note = $('bud-note').value.trim()||null;
   const month = S.budMonth+'-01';
   const b = S.budgets.find(x=>x.category_id===catId && x.month===month);
   let error;
   if(amt<=0 && b) ({error} = await sb.from('budgets').delete().eq('id',b.id));
-  else if(b) ({error} = await sb.from('budgets').update({amount:amt}).eq('id',b.id));
-  else if(amt>0) ({error} = await sb.from('budgets').insert({category_id:catId, month, amount:amt}));
+  else if(b) ({error} = await sb.from('budgets').update({amount:amt, note}).eq('id',b.id));
+  else if(amt>0) ({error} = await sb.from('budgets').insert({category_id:catId, month, amount:amt, note}));
   if(error){ alert(error.message); return; }
   closeModal(); await refresh();
 }
@@ -689,7 +692,7 @@ async function copyLastBudgets(){
   const prev = shiftMonth(S.budMonth,-1)+'-01', cur = S.budMonth+'-01';
   const have = new Set(S.budgets.filter(b=>b.month===cur).map(b=>b.category_id));
   const rows = S.budgets.filter(b=>b.month===prev && !have.has(b.category_id))
-    .map(b=>({category_id:b.category_id, month:cur, amount:b.amount}));
+    .map(b=>({category_id:b.category_id, month:cur, amount:b.amount, note:b.note||null}));
   if(!rows.length){ alert('Nothing to copy from last month.'); return; }
   const {error} = await sb.from('budgets').insert(rows);
   if(error){ alert(error.message); return; }
