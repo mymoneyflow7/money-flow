@@ -293,8 +293,10 @@ function closeModal(){ $('modal-wrap').style.display='none'; $('modal').innerHTM
 function renderDashboard(){
   const bal = balances(), mk = monthKey(new Date());
   const active = S.accounts.filter(a=>!a.archived);
-  let assets=0, debts=0;
-  active.forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD'); if(b>=0) assets+=b; else debts+=b; });
+  let assets=0, debts=0, exclTotal=0;
+  active.forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD');
+    if(a.exclude_networth){ exclTotal+=b; return; }
+    if(b>=0) assets+=b; else debts+=b; });
   const missingRates = currenciesInUse().filter(c=>!rateOf(c));
   const net = assets+debts;
   const {inc,exp} = monthTotals(mk);
@@ -314,7 +316,7 @@ function renderDashboard(){
       const label = b<0 && OWED_TYPES.includes(a.type) ? 'owed ' : '';
       const approx = cur!==base() ? `<div class="sub">≈ ${fmt(toBase(Math.abs(b),cur))}</div>` : '';
       return `<div class="item" onclick="openAcctModal('${a.id}')">
-        <div>${esc(a.name)}<div class="sub">${ACCT_TYPES[a.type]} · ${cur}</div></div>
+        <div>${esc(a.name)}${a.exclude_networth?'<span class="pill">not in net worth</span>':''}<div class="sub">${ACCT_TYPES[a.type]} · ${cur}</div></div>
         <div style="text-align:right"><span class="${cls}" style="font-weight:600">${label}${fmt(Math.abs(b),cur)}</span>${approx}</div></div>`;
     }).join('') + `</div>`;
   });
@@ -326,6 +328,7 @@ function renderDashboard(){
       <h3>Net worth (${base()})</h3>
       <div class="big ${net<0?'neg':''}">${fmt(net)}</div>
       <div class="muted" style="margin-top:4px">Assets ${fmt(assets)} · Debts ${fmt(Math.abs(debts))}</div>
+      ${exclTotal?`<div class="muted" style="margin-top:2px">Excluded (locked, e.g. CPF): ${fmt(exclTotal)} · Grand total: ${fmt(net+exclTotal)}</div>`:''}
     </div>
     <div class="card"><h3>${monthLabel(mk)}</h3>
       <div class="row2">
@@ -540,6 +543,8 @@ function openAcctModal(id){
     <label id="ac-bal-label">${owed?'Amount currently owed':'Starting balance'}</label>
     <input id="ac-balance" type="number" step="0.01" inputmode="decimal"
       value="${a?Math.abs(Number(a.starting_balance)):'0'}">
+    <label class="row" style="margin:14px 0;cursor:pointer"><span>Exclude from net worth (locked funds like CPF)</span>
+      <input type="checkbox" id="ac-excl" style="width:auto" ${a&&a.exclude_networth?'checked':''}></label>
     <p class="muted" id="ac-hint" style="margin-top:6px"></p>
     ${a && ASSET_TYPES.includes(a.type) ? `
       <label>Update current value (${a.currency||'SGD'})</label>
@@ -572,7 +577,7 @@ async function saveAcct(id){
   const type=$('ac-type').value;
   let bal=parseFloat($('ac-balance').value)||0;
   if(OWED_TYPES.includes(type)) bal = -Math.abs(bal);
-  const row={name, type, starting_balance:bal, currency:$('ac-currency').value};
+  const row={name, type, starting_balance:bal, currency:$('ac-currency').value, exclude_networth:$('ac-excl').checked};
   if(id) delete row.type; // type locked after creation
   const q = id ? sb.from('accounts').update(row).eq('id',id) : sb.from('accounts').insert(row);
   const {error}=await q;
@@ -689,11 +694,47 @@ async function copyLastBudgets(){
   await refresh();
 }
 
+/* ============ REPORTS ============ */
+let repMonth = monthKey(new Date());
+function shiftRep(n){ repMonth = shiftMonth(repMonth, n); openReport(); }
+function openReport(){
+  const mk = repMonth;
+  const {inc,exp} = monthTotals(mk);
+  const byExp={}, byInc={};
+  monthTxns(mk).filter(t=>!t.is_adjustment).forEach(t=>{
+    const v = toBase(t.amount, accCur(t.account_id));
+    if(t.type==='expense'){ const n=catName(t.category_id); byExp[n]=(byExp[n]||0)+v; }
+    else if(t.type==='income'){ const n=catName(t.category_id); byInc[n]=(byInc[n]||0)+v; }
+  });
+  const section = (obj,total,color)=>Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>`
+    <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div class="row"><div>${esc(n)}</div>
+        <div style="font-weight:600">${fmt(v)} <span class="muted">${total?Math.round(v/total*100)+'%':''}</span></div></div>
+      <div class="bar"><div style="width:${total?Math.min(100,v/total*100):0}%${color?';background:'+color:''}"></div></div>
+    </div>`).join('') || '<p class="muted">Nothing recorded.</p>';
+  openModal(`
+    <div class="monthnav" style="margin-bottom:6px">
+      <button onclick="shiftRep(-1)">‹</button><h2 style="margin:0">${monthLabel(mk)}</h2><button onclick="shiftRep(1)">›</button>
+    </div>
+    <div class="row2" style="margin:10px 0 4px">
+      <div><div class="muted">Income</div><div class="pos" style="font-weight:700">${fmt(inc)}</div></div>
+      <div><div class="muted">Expenses</div><div class="neg" style="font-weight:700">${fmt(exp)}</div></div>
+      <div><div class="muted">Saved</div><div class="${inc-exp>=0?'pos':'neg'}" style="font-weight:700">${fmt(inc-exp)}</div></div>
+    </div>
+    <label>Spending by category</label>
+    ${section(byExp, exp, '#f87171')}
+    <label style="margin-top:18px">Income by category</label>
+    ${section(byInc, inc, '#4ade80')}
+    <p class="muted" style="margin-top:14px">Figures converted to ${base()}. Market-value updates and transfers not counted.</p>
+  `);
+}
+
 /* ============ MORE ============ */
 function renderMore(){
   const bal = balances();
   $('view-more').innerHTML = `
     <div class="banner">Signed in as <b>${esc(S.user.email)}</b> — same login on laptop &amp; iPhone keeps everything in sync.</div>
+    <button style="width:100%;margin-bottom:14px" onclick="openReport()">Monthly report — spending &amp; income by category</button>
     <div class="card">
     <details open>
       <summary>Accounts &amp; cards</summary>
