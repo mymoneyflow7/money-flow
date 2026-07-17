@@ -159,9 +159,9 @@ const toBase = (n,cur) => cur===base() ? Number(n) : Number(n)*(rateOf(cur)||1);
 const accCur = id => { const a=acctById(id); return a ? (a.currency||'SGD') : base(); };
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
-const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage', investment:'Investment (stocks/funds)', crypto:'Crypto', metal:'Gold / Silver', property:'Property', cpf:'CPF'};
+const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage', investment:'Investment (stocks/funds)', bond:'Bonds', crypto:'Crypto', metal:'Gold / Silver', property:'Property', cpf:'CPF'};
 const OWED_TYPES = ['credit_card','loan'];
-const ASSET_TYPES = ['investment','crypto','metal','property','cpf'];
+const ASSET_TYPES = ['investment','bond','crypto','metal','property','cpf'];
 
 function getConfig(){ return {url:localStorage.getItem('mf_sb_url'), key:localStorage.getItem('mf_sb_key')}; }
 function saveConfig(){
@@ -534,7 +534,7 @@ function openAcctModal(id){
     <label>Name</label>
     <input id="ac-name" value="${a?esc(a.name):''}" placeholder="e.g. DBS Savings, UOB Visa, HDB Mortgage">
     <label>Type</label>
-    <select id="ac-type" onchange="acctTypeHint()" ${a?'disabled':''}>
+    <select id="ac-type" onchange="acctTypeHint()">
       ${Object.entries(ACCT_TYPES).map(([k,v])=>`<option value="${k}" ${a&&a.type===k?'selected':''}>${v}</option>`).join('')}
     </select>
     <label>Currency</label>
@@ -567,6 +567,7 @@ function acctTypeHint(){
     loan:'Tip: record monthly payments as a Transfer from your bank to this loan (principal), plus an Expense on the loan for the interest portion.',
     credit_card:'Card spending = Expense on this card. Paying the bill = Transfer from bank to this card.',
     investment:'Buying in = Transfer from your bank. Update the market value anytime by editing this account; dividends = Income on this account.',
+    bond:'Buying bonds = Transfer from your bank. Coupon payments = Income on this account; revalue anytime by editing this account.',
     crypto:'Track the fiat value of your holdings (pick the currency you value them in). Buys = Transfer from bank; update market value by editing this account.',
     metal:'Track the current market value of your gold/silver. Purchases = Transfer from bank; revalue anytime by editing this account.',
     property:'Enter the property\'s market value (in its own currency). Revalue anytime by editing this account. Keep the mortgage as a separate Loan account — net worth shows property value minus loan automatically.',
@@ -580,7 +581,6 @@ async function saveAcct(id){
   let bal=parseFloat($('ac-balance').value)||0;
   if(OWED_TYPES.includes(type)) bal = -Math.abs(bal);
   const row={name, type, starting_balance:bal, currency:$('ac-currency').value, exclude_networth:$('ac-excl').checked};
-  if(id) delete row.type; // type locked after creation
   const q = id ? sb.from('accounts').update(row).eq('id',id) : sb.from('accounts').insert(row);
   const {error}=await q;
   if(error){ alert(error.message); return; }
@@ -731,12 +731,14 @@ function openReport(){
   `);
 }
 
-let assetChart = null, assetIncl = true;
+let assetChart = null, assetIncl = true, assetDetail = null;
+function toggleAssetDetail(l){ assetDetail = assetDetail===l ? null : l; openAssetReport(); }
 function openAssetReport(){
   const bal = balances();
   const classes = [
     ['Banks & Cash',['bank','cash']],
     ['Investments',['investment']],
+    ['Bonds',['bond']],
     ['Crypto',['crypto']],
     ['Gold / Silver',['metal']],
     ['Property',['property']],
@@ -744,28 +746,39 @@ function openAssetReport(){
   ];
   const rows=[]; let total=0;
   classes.forEach(([label,types])=>{
-    let v=0;
+    const accts=[];
     S.accounts.filter(a=>!a.archived && types.includes(a.type) && (assetIncl || !a.exclude_networth))
-      .forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD'); if(b>0) v+=b; });
-    if(v>0){ rows.push([label,v]); total+=v; }
+      .forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD');
+        if(b>0) accts.push({name:a.name, cur:a.currency||'SGD', raw:bal[a.id], val:b}); });
+    const v = accts.reduce((s,x)=>s+x.val,0);
+    if(v>0){ rows.push({label, v, accts}); total+=v; }
   });
-  const palette=['#38bdf8','#4ade80','#fbbf24','#a78bfa','#fb923c','#f472b6'];
+  const palette=['#38bdf8','#4ade80','#2dd4bf','#fbbf24','#a78bfa','#fb923c','#f472b6'];
   openModal(`
     <h2>Asset allocation</h2>
-    <p class="muted">Current value of everything you own, converted to ${base()}. Debts not included.</p>
+    <p class="muted">Everything you own, converted to ${base()}. Debts not included. Tap a slice or a row to see the accounts inside.</p>
     <label class="row" style="margin:6px 0 10px;cursor:pointer"><span>Include locked assets (e.g. CPF)</span>
-      <input type="checkbox" style="width:auto" ${assetIncl?'checked':''} onchange="assetIncl=this.checked;openAssetReport()"></label>
+      <input type="checkbox" style="width:auto" ${assetIncl?'checked':''} onchange="assetIncl=this.checked;assetDetail=null;openAssetReport()"></label>
     ${rows.length?'<canvas id="chart-assets" height="220"></canvas>':''}
-    ${rows.map(([n,v],i)=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border)">
-      <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${palette[i%palette.length]};margin-right:8px"></span>${n}</div>
-      <div style="font-weight:600">${fmt(v)} <span class="muted">${Math.round(v/total*100)}%</span></div></div>`).join('')||'<p class="muted">No assets yet.</p>'}
+    ${rows.map((r,i)=>`
+      <div class="row" style="padding:8px 0;cursor:pointer" onclick="toggleAssetDetail('${r.label}')">
+        <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${palette[i%palette.length]};margin-right:8px"></span>${r.label}<span class="muted"> ${assetDetail===r.label?'▾':'▸'}</span></div>
+        <div style="font-weight:600">${fmt(r.v)} <span class="muted">${Math.round(r.v/total*100)}%</span></div>
+      </div>
+      ${assetDetail===r.label ? r.accts.sort((x,y)=>y.val-x.val).map(x=>`
+        <div class="row" style="padding:3px 0 3px 20px">
+          <div class="muted">${esc(x.name)}</div>
+          <div class="muted">${fmt(x.raw, x.cur)}${x.cur!==base()?' ≈ '+fmt(x.val):''} · ${Math.round(x.val/r.v*100)}%</div>
+        </div>`).join('') : ''}
+      <div style="border-bottom:1px solid var(--border)"></div>`).join('')||'<p class="muted">No assets yet.</p>'}
     ${rows.length?`<div class="row" style="padding:10px 0"><div style="font-weight:600">Total assets</div><div style="font-weight:700">${fmt(total)}</div></div>`:''}
   `);
   if(rows.length && typeof Chart!=='undefined'){
     if(assetChart) assetChart.destroy();
     assetChart = new Chart($('chart-assets'), {type:'doughnut',
-      data:{labels:rows.map(r=>r[0]), datasets:[{data:rows.map(r=>r[1]), backgroundColor:palette, borderWidth:0}]},
-      options:{plugins:{legend:{display:false}}}});
+      data:{labels:rows.map(r=>r.label), datasets:[{data:rows.map(r=>r.v), backgroundColor:palette, borderWidth:0}]},
+      options:{plugins:{legend:{display:false}},
+        onClick:(e,els)=>{ if(els.length) toggleAssetDetail(rows[els[0].index].label); }}});
   }
 }
 
