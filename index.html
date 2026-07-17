@@ -159,9 +159,9 @@ const toBase = (n,cur) => cur===base() ? Number(n) : Number(n)*(rateOf(cur)||1);
 const accCur = id => { const a=acctById(id); return a ? (a.currency||'SGD') : base(); };
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
-const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage', investment:'Investment (stocks/funds)', crypto:'Crypto', metal:'Gold / Silver', cpf:'CPF'};
+const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage', investment:'Investment (stocks/funds)', crypto:'Crypto', metal:'Gold / Silver', property:'Property', cpf:'CPF'};
 const OWED_TYPES = ['credit_card','loan'];
-const ASSET_TYPES = ['investment','crypto','metal','cpf'];
+const ASSET_TYPES = ['investment','crypto','metal','property','cpf'];
 
 function getConfig(){ return {url:localStorage.getItem('mf_sb_url'), key:localStorage.getItem('mf_sb_key')}; }
 function saveConfig(){
@@ -568,6 +568,7 @@ function acctTypeHint(){
     investment:'Buying in = Transfer from your bank. Update the market value anytime by editing this account; dividends = Income on this account.',
     crypto:'Track the fiat value of your holdings (pick the currency you value them in). Buys = Transfer from bank; update market value by editing this account.',
     metal:'Track the current market value of your gold/silver. Purchases = Transfer from bank; revalue anytime by editing this account.',
+    property:'Enter the property\'s market value (in its own currency). Revalue anytime by editing this account. Keep the mortgage as a separate Loan account — net worth shows property value minus loan automatically.',
     cpf:'Monthly contributions = Income into this account (add a "CPF Contribution" category). Cash top-ups = Transfer from bank.'
   };
   $('ac-hint').textContent = hints[t]||'';
