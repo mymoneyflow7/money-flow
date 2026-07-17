@@ -232,6 +232,7 @@ async function seedCategories(){
 async function enterApp(){
   await loadAll();
   await seedCategories();
+  await rolloverBudgets();
   $('app').style.display='block'; $('nav').style.display='flex';
   showView('dashboard');
   maybeAutoBackup();
@@ -753,6 +754,36 @@ async function copyLastBudgets(){
   const {error} = await sb.from('budgets').insert(rows);
   if(error){ alert(error.message); return; }
   await refresh();
+}
+
+/* Auto-carry budgets into the new month / new year */
+async function rolloverBudgets(){
+  const nowMk = monthKey(new Date());
+  const rows = [];
+  // monthly: if this month has none, copy the most recent month that has any
+  const cur = nowMk+'-01';
+  if(!S.budgets.some(b=>b.month===cur && (b.period||'month')==='month')){
+    const past = [...new Set(S.budgets.filter(b=>(b.period||'month')==='month' && b.month<cur).map(b=>b.month))].sort();
+    if(past.length){
+      const src = past[past.length-1];
+      S.budgets.filter(b=>b.month===src && (b.period||'month')==='month')
+        .forEach(b=>rows.push({category_id:b.category_id, month:cur, amount:b.amount, note:b.note||null, period:'month'}));
+    }
+  }
+  // yearly: if this year has none, copy the most recent year that has any
+  const curY = nowMk.slice(0,4)+'-01-01';
+  if(!S.budgets.some(b=>b.period==='year' && b.month===curY)){
+    const pastY = [...new Set(S.budgets.filter(b=>b.period==='year' && b.month<curY).map(b=>b.month))].sort();
+    if(pastY.length){
+      const srcY = pastY[pastY.length-1];
+      S.budgets.filter(b=>b.period==='year' && b.month===srcY)
+        .forEach(b=>rows.push({category_id:b.category_id, month:curY, amount:b.amount, note:b.note||null, period:'year'}));
+    }
+  }
+  if(!rows.length) return;
+  await sb.from('budgets').insert(rows); // ignore errors (e.g. another device rolled over first)
+  const {data} = await sb.from('budgets').select('*');
+  if(data) S.budgets = data;
 }
 
 /* ============ REPORTS ============ */
