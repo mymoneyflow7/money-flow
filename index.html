@@ -619,7 +619,7 @@ function renderBudgets(){
     if(t.category_id) spent[t.category_id]=(spent[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
   });
   const monthStart = mk+'-01';
-  const buds = S.budgets.filter(b=>b.month===monthStart);
+  const buds = S.budgets.filter(b=>b.month===monthStart && (b.period||'month')==='month');
   const budByCat = {}; buds.forEach(b=>budByCat[b.category_id]=b);
   const cats = S.categories.filter(c=>c.kind==='expense');
   let totalBud=0, totalSpent=0;
@@ -643,6 +643,29 @@ function renderBudgets(){
     </div>`;
   }).join('');
   const unbudgeted = cats.filter(c=>!budByCat[c.id] && !spent[c.id]);
+  const year = mk.slice(0,4);
+  const ySpent = {};
+  S.txns.filter(t=>t.type==='expense' && !t.is_adjustment && t.tx_date.slice(0,4)===year).forEach(t=>{
+    if(t.category_id) ySpent[t.category_id]=(ySpent[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
+  });
+  const ybuds = S.budgets.filter(b=>b.period==='year' && b.month===year+'-01-01');
+  const yRows = ybuds.map(b=>{
+    const c = catById(b.category_id); if(!c) return '';
+    const sp = ySpent[b.category_id]||0, amt = Number(b.amount);
+    const over = sp>amt, pct = amt>0?Math.min(100,sp/amt*100):0;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="row">
+        <div>${esc(c.name)}${b.note?`<div class="sub" style="font-size:12px;color:var(--muted)">${esc(b.note)}</div>`:''}</div>
+        <div style="text-align:right">
+          <span class="${over?'neg':''}" style="font-weight:600">${fmt(sp)}</span>
+          <span class="muted"> / </span>
+          <button class="link small" onclick="editBudget('${c.id}','year')">${fmt(amt)}</button>
+        </div>
+      </div>
+      <div class="bar"><div class="${over?'over':''}" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+  const yUnbudgeted = cats.filter(c=>!ybuds.some(b=>b.category_id===c.id));
   $('view-budgets').innerHTML = `
     <div class="monthnav">
       <button onclick="S.budMonth=shiftMonth(S.budMonth,-1);render()">‹</button>
@@ -661,38 +684,54 @@ function renderBudgets(){
         ${unbudgeted.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
       </select>`:''}
       <button class="link small" style="margin-top:12px" onclick="copyLastBudgets()">Copy budgets from last month</button>
+    </div>
+    <div class="card"><h3>Yearly budgets — ${year}</h3>
+      <p class="muted">Spending counted from 1 Jan ${year} to date. Good for irregular costs like insurance, travel, gifts.</p>
+      ${yRows||''}
+      ${yUnbudgeted.length?`<label>Add yearly budget for…</label>
+      <select onchange="if(this.value)editBudget(this.value,'year')">
+        <option value="">Choose category</option>
+        ${yUnbudgeted.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>`:''}
     </div>`;
 }
-function editBudget(catId){
+function budgetKey(period){ return period==='year' ? S.budMonth.slice(0,4)+'-01-01' : S.budMonth+'-01'; }
+function editBudget(catId, period){
+  period = period==='year' ? 'year' : 'month';
   const c = catById(catId);
-  const b = S.budgets.find(x=>x.category_id===catId && x.month===S.budMonth+'-01');
+  const b = S.budgets.find(x=>x.category_id===catId && x.month===budgetKey(period) && (x.period||'month')===period);
   openModal(`
     <h2>Budget — ${esc(c.name)}</h2>
-    <p class="muted">${monthLabel(S.budMonth)}</p>
-    <label>Monthly limit (${base()})</label>
+    <div class="seg">
+      <button class="${period==='month'?'on':''}" onclick="editBudget('${catId}','month')">Monthly</button>
+      <button class="${period==='year'?'on':''}" onclick="editBudget('${catId}','year')">Yearly</button>
+    </div>
+    <p class="muted" style="margin-top:10px">${period==='month'?monthLabel(S.budMonth):'Whole of '+S.budMonth.slice(0,4)+' — spending counted year-to-date'}</p>
+    <label>${period==='month'?'Monthly':'Yearly'} limit (${base()})</label>
     <input id="bud-amt" type="number" step="0.01" min="0" inputmode="decimal" value="${b?b.amount:''}" placeholder="0 = no budget">
     <label>Description (optional)</label>
-    <input id="bud-note" value="${b?esc(b.note||''):''}" placeholder="e.g. groceries + eating out, school fees">
-    <button class="primary" onclick="saveBudget('${catId}')">Save</button>
+    <input id="bud-note" value="${b?esc(b.note||''):''}" placeholder="${period==='month'?'e.g. groceries + eating out':'e.g. insurance, travel, gifts'}">
+    <button class="primary" onclick="saveBudget('${catId}','${period}')">Save</button>
   `);
 }
-async function saveBudget(catId){
+async function saveBudget(catId, period){
+  period = period==='year' ? 'year' : 'month';
   const amt = parseFloat($('bud-amt').value)||0;
   const note = $('bud-note').value.trim()||null;
-  const month = S.budMonth+'-01';
-  const b = S.budgets.find(x=>x.category_id===catId && x.month===month);
+  const month = budgetKey(period);
+  const b = S.budgets.find(x=>x.category_id===catId && x.month===month && (x.period||'month')===period);
   let error;
   if(amt<=0 && b) ({error} = await sb.from('budgets').delete().eq('id',b.id));
   else if(b) ({error} = await sb.from('budgets').update({amount:amt, note}).eq('id',b.id));
-  else if(amt>0) ({error} = await sb.from('budgets').insert({category_id:catId, month, amount:amt, note}));
+  else if(amt>0) ({error} = await sb.from('budgets').insert({category_id:catId, month, amount:amt, note, period}));
   if(error){ alert(error.message); return; }
   closeModal(); await refresh();
 }
 async function copyLastBudgets(){
   const prev = shiftMonth(S.budMonth,-1)+'-01', cur = S.budMonth+'-01';
-  const have = new Set(S.budgets.filter(b=>b.month===cur).map(b=>b.category_id));
-  const rows = S.budgets.filter(b=>b.month===prev && !have.has(b.category_id))
-    .map(b=>({category_id:b.category_id, month:cur, amount:b.amount, note:b.note||null}));
+  const have = new Set(S.budgets.filter(b=>b.month===cur && (b.period||'month')==='month').map(b=>b.category_id));
+  const rows = S.budgets.filter(b=>b.month===prev && (b.period||'month')==='month' && !have.has(b.category_id))
+    .map(b=>({category_id:b.category_id, month:cur, amount:b.amount, note:b.note||null, period:'month'}));
   if(!rows.length){ alert('Nothing to copy from last month.'); return; }
   const {error} = await sb.from('budgets').insert(rows);
   if(error){ alert(error.message); return; }
@@ -711,6 +750,23 @@ function openReport(){
     if(t.type==='expense'){ const n=catName(t.category_id); byExp[n]=(byExp[n]||0)+v; }
     else if(t.type==='income'){ const n=catName(t.category_id); byInc[n]=(byInc[n]||0)+v; }
   });
+  const spentById = {};
+  monthTxns(mk).filter(t=>t.type==='expense' && !t.is_adjustment).forEach(t=>{
+    if(t.category_id) spentById[t.category_id]=(spentById[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
+  });
+  const mBuds = S.budgets.filter(b=>b.month===mk+'-01' && (b.period||'month')==='month');
+  let bTot=0, sTot=0;
+  const budRows = mBuds.map(b=>{
+    const c = catById(b.category_id); if(!c) return '';
+    const sp = spentById[b.category_id]||0, amt = Number(b.amount);
+    bTot+=amt; sTot+=sp;
+    const diff = amt-sp;
+    return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border)">
+      <div>${esc(c.name)}</div>
+      <div style="text-align:right">${fmt(sp)} <span class="muted">/ ${fmt(amt)}</span><br>
+        <span class="${diff<0?'neg':'pos'}" style="font-size:12px;font-weight:600">${diff<0?fmt(-diff)+' over':fmt(diff)+' left'}</span></div>
+    </div>`;
+  }).join('');
   const section = (obj,total,color)=>Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>`
     <div style="padding:8px 0;border-bottom:1px solid var(--border)">
       <div class="row"><div>${esc(n)}</div>
@@ -730,6 +786,12 @@ function openReport(){
     ${section(byExp, exp, '#f87171')}
     <label style="margin-top:18px">Income by category</label>
     ${section(byInc, inc, '#4ade80')}
+    <label style="margin-top:18px">Budget vs actual</label>
+    ${budRows||'<p class="muted">No budgets set for this month.</p>'}
+    ${budRows?`<div class="row" style="padding:8px 0">
+      <div style="font-weight:600">Total budgeted</div>
+      <div style="font-weight:700"><span class="${sTot>bTot?'neg':''}">${fmt(sTot)}</span> <span class="muted">/ ${fmt(bTot)}</span></div>
+    </div>`:''}
     <p class="muted" style="margin-top:14px">Figures converted to ${base()}. Market-value updates and transfers not counted.</p>
   `);
 }
