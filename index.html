@@ -225,8 +225,9 @@ async function seedCategories(){
   if(S.categories.length) return;
   const rows = [];
   for(const k in DEFAULT_CATS) DEFAULT_CATS[k].forEach(n=>rows.push({name:n,kind:k}));
-  const {error} = await sb.from('categories').insert(rows);
-  if(!error){ const {data} = await sb.from('categories').select('*').order('name'); S.categories=data; }
+  await sb.from('categories').insert(rows); // ignore errors (e.g. another device seeded first)
+  const {data} = await sb.from('categories').select('*').order('name');
+  if(data) S.categories = data;
 }
 async function enterApp(){
   await loadAll();
@@ -730,12 +731,53 @@ function openReport(){
   `);
 }
 
+let assetChart = null, assetIncl = true;
+function openAssetReport(){
+  const bal = balances();
+  const classes = [
+    ['Banks & Cash',['bank','cash']],
+    ['Investments',['investment']],
+    ['Crypto',['crypto']],
+    ['Gold / Silver',['metal']],
+    ['Property',['property']],
+    ['CPF',['cpf']]
+  ];
+  const rows=[]; let total=0;
+  classes.forEach(([label,types])=>{
+    let v=0;
+    S.accounts.filter(a=>!a.archived && types.includes(a.type) && (assetIncl || !a.exclude_networth))
+      .forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD'); if(b>0) v+=b; });
+    if(v>0){ rows.push([label,v]); total+=v; }
+  });
+  const palette=['#38bdf8','#4ade80','#fbbf24','#a78bfa','#fb923c','#f472b6'];
+  openModal(`
+    <h2>Asset allocation</h2>
+    <p class="muted">Current value of everything you own, converted to ${base()}. Debts not included.</p>
+    <label class="row" style="margin:6px 0 10px;cursor:pointer"><span>Include locked assets (e.g. CPF)</span>
+      <input type="checkbox" style="width:auto" ${assetIncl?'checked':''} onchange="assetIncl=this.checked;openAssetReport()"></label>
+    ${rows.length?'<canvas id="chart-assets" height="220"></canvas>':''}
+    ${rows.map(([n,v],i)=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${palette[i%palette.length]};margin-right:8px"></span>${n}</div>
+      <div style="font-weight:600">${fmt(v)} <span class="muted">${Math.round(v/total*100)}%</span></div></div>`).join('')||'<p class="muted">No assets yet.</p>'}
+    ${rows.length?`<div class="row" style="padding:10px 0"><div style="font-weight:600">Total assets</div><div style="font-weight:700">${fmt(total)}</div></div>`:''}
+  `);
+  if(rows.length && typeof Chart!=='undefined'){
+    if(assetChart) assetChart.destroy();
+    assetChart = new Chart($('chart-assets'), {type:'doughnut',
+      data:{labels:rows.map(r=>r[0]), datasets:[{data:rows.map(r=>r[1]), backgroundColor:palette, borderWidth:0}]},
+      options:{plugins:{legend:{display:false}}}});
+  }
+}
+
 /* ============ MORE ============ */
 function renderMore(){
   const bal = balances();
   $('view-more').innerHTML = `
     <div class="banner">Signed in as <b>${esc(S.user.email)}</b> — same login on laptop &amp; iPhone keeps everything in sync.</div>
-    <button style="width:100%;margin-bottom:14px" onclick="openReport()">Monthly report — spending &amp; income by category</button>
+    <div class="row2" style="margin-bottom:14px">
+      <button onclick="openReport()">Monthly report</button>
+      <button onclick="openAssetReport()">Asset allocation</button>
+    </div>
     <div class="card">
     <details open>
       <summary>Accounts &amp; cards</summary>
