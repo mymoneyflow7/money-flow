@@ -823,8 +823,16 @@ function openReport(){
     yearSpendTot += v;
     if(t.category_id) ySpentR[t.category_id]=(ySpentR[t.category_id]||0)+v;
   });
-  const mBudsYearTot = S.budgets.filter(b=>(b.period||'month')==='month' && b.month.slice(0,4)===yearR)
-    .reduce((s,b)=>s+Number(b.amount),0);
+  const mMonthsAll = [...new Set(S.budgets.filter(b=>(b.period||'month')==='month').map(b=>b.month))].sort();
+  const sumByMonth = {};
+  mMonthsAll.forEach(mm=>{ sumByMonth[mm] = S.budgets.filter(b=>b.month===mm && (b.period||'month')==='month')
+    .reduce((s,b)=>s+Number(b.amount),0); });
+  let mBudsYearTot = 0;
+  for(let mi=1; mi<=12; mi++){
+    const key = yearR+'-'+String(mi).padStart(2,'0')+'-01';
+    const applicable = mMonthsAll.filter(x=>x<=key).pop();
+    if(applicable) mBudsYearTot += sumByMonth[applicable];
+  }
   const yBudsR = S.budgets.filter(b=>b.period==='year' && b.month===yearR+'-01-01');
   let ybTot=0, ysTot=0;
   const yBudRows = yBudsR.map(b=>{
@@ -870,7 +878,7 @@ function openReport(){
       <div style="font-weight:700"><span class="${ysTot>ybTot?'neg':''}">${fmt(ysTot)}</span> <span class="muted">/ ${fmt(ybTot)}</span></div>
     </div>`:''}
     <label style="margin-top:18px">Full year ${yearR} — combined</label>
-    <div class="row" style="padding:5px 0"><div class="muted">Monthly budgets set in ${yearR} (all months added up)</div><div>${fmt(mBudsYearTot)}</div></div>
+    <div class="row" style="padding:5px 0"><div class="muted">Monthly budgets over 12 months (latest set carried forward)</div><div>${fmt(mBudsYearTot)}</div></div>
     <div class="row" style="padding:5px 0"><div class="muted">Yearly budgets</div><div>${fmt(ybTot)}</div></div>
     <div class="row" style="padding:5px 0;border-top:1px solid var(--border)"><div style="font-weight:600">Combined budget for ${yearR}</div><div style="font-weight:700">${fmt(mBudsYearTot+ybTot)}</div></div>
     <div class="row" style="padding:5px 0"><div style="font-weight:600">Spent so far in ${yearR}</div>
