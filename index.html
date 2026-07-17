@@ -970,15 +970,102 @@ function openLiabReport(){
   }
 }
 
+let projChart = null;
+const PROJ_CLASSES = [
+  ['Banks & Cash',['bank','cash']],
+  ['Investments',['investment']],
+  ['Bonds',['bond']],
+  ['Crypto',['crypto']],
+  ['Gold / Silver',['metal']],
+  ['Property',['property']],
+  ['CPF',['cpf']],
+  ['Credit Cards',['credit_card']],
+  ['Loans / Mortgage',['loan']]
+];
+function projExcluded(){
+  try{ return new Set(JSON.parse(localStorage.getItem('mf_proj_excl')||'["CPF"]')); }
+  catch(e){ return new Set(['CPF']); }
+}
+function toggleProjClass(label, on){
+  const ex = projExcluded();
+  if(on) ex.delete(label); else ex.add(label);
+  localStorage.setItem('mf_proj_excl', JSON.stringify([...ex]));
+  openProjection();
+}
+function openProjection(){
+  const bal = balances();
+  const ex = projExcluded();
+  const typeToClass = {};
+  PROJ_CLASSES.forEach(([l,ts])=>ts.forEach(t=>typeToClass[t]=l));
+  const present = PROJ_CLASSES.filter(([l,ts])=>S.accounts.some(a=>!a.archived && ts.includes(a.type)));
+  let net0 = 0;
+  S.accounts.filter(a=>!a.archived && !ex.has(typeToClass[a.type]||''))
+    .forEach(a=>{ net0 += toBase(bal[a.id], a.currency||'SGD'); });
+  // average income/spending over the last 6 months that have activity
+  const nowMk = monthKey(new Date());
+  const hist = [];
+  for(let i=5;i>=0;i--) hist.push(shiftMonth(nowMk,-i));
+  const stats = hist.map(m=>monthTotals(m)).filter(x=>x.inc>0||x.exp>0);
+  const n = stats.length||1;
+  const avgInc = stats.reduce((s,x)=>s+x.inc,0)/n;
+  const avgExp = stats.reduce((s,x)=>s+x.exp,0)/n;
+  // current monthly budget (latest applicable set) + yearly budgets spread over 12 months
+  const cur = nowMk+'-01';
+  const mMonths = [...new Set(S.budgets.filter(b=>(b.period||'month')==='month').map(b=>b.month))].sort();
+  const ap = mMonths.filter(x=>x<=cur).pop() || mMonths[0];
+  const mBud = ap ? S.budgets.filter(b=>b.month===ap && (b.period||'month')==='month').reduce((s,b)=>s+Number(b.amount),0) : 0;
+  const curY = nowMk.slice(0,4)+'-01-01';
+  let yset = S.budgets.filter(b=>b.period==='year' && b.month===curY);
+  if(!yset.length){ const ys=[...new Set(S.budgets.filter(b=>b.period==='year').map(b=>b.month))].sort();
+    if(ys.length) yset = S.budgets.filter(b=>b.period==='year' && b.month===ys[ys.length-1]); }
+  const budMonthly = mBud + yset.reduce((s,b)=>s+Number(b.amount),0)/12;
+  const save1 = avgInc-avgExp, save2 = avgInc-budMonthly;
+  const y0 = new Date().getFullYear();
+  const labels=[], d1=[], d2=[];
+  for(let k=0;k<=5;k++){ labels.push(String(y0+k)); d1.push(Math.round(net0+save1*12*k)); d2.push(Math.round(net0+save2*12*k)); }
+  openModal(`
+    <h2>Net worth — 5-year projection</h2>
+    <p class="muted">Simple projection: savings added monthly, no investment returns or property appreciation assumed.</p>
+    <label>Count these in the starting net worth (${fmt(net0)}):</label>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 10px">
+      ${present.map(([l])=>`<label class="row" style="gap:6px;cursor:pointer;justify-content:flex-start">
+        <input type="checkbox" style="width:auto" ${ex.has(l)?'':'checked'} onchange="toggleProjClass('${l}',this.checked)">
+        <span style="font-size:14px">${l}</span></label>`).join('')}
+    </div>
+    <canvas id="chart-proj" height="220"></canvas>
+    <div class="row" style="padding:5px 0;margin-top:8px"><div class="muted">Avg monthly income (last ${n} month${n>1?'s':''})</div><div>${fmt(avgInc)}</div></div>
+    <div class="row" style="padding:5px 0"><div class="muted">Avg monthly spending</div><div>${fmt(avgExp)}</div></div>
+    <div class="row" style="padding:5px 0"><div class="muted">Monthly budget (incl. yearly ÷ 12)</div><div>${fmt(budMonthly)}</div></div>
+    <div class="row" style="padding:8px 0;border-top:1px solid var(--border)">
+      <div><span style="color:#38bdf8">●</span> At current pace (${fmt(save1)}/mo)</div>
+      <div style="font-weight:700">${fmt(d1[5])}</div></div>
+    <div class="row" style="padding:5px 0">
+      <div><span style="color:#4ade80">●</span> If you stick to budget (${fmt(save2)}/mo)</div>
+      <div style="font-weight:700">${fmt(d2[5])}</div></div>
+    <p class="muted" style="margin-top:10px">Sticking to budget would make a difference of ${fmt(Math.abs(d2[5]-d1[5]))} over 5 years.</p>
+  `);
+  if(typeof Chart!=='undefined'){
+    if(projChart) projChart.destroy();
+    projChart = new Chart($('chart-proj'), {type:'line',
+      data:{labels, datasets:[
+        {label:'At current pace', data:d1, borderColor:'#38bdf8', backgroundColor:'transparent', tension:.2},
+        {label:'If on budget', data:d2, borderColor:'#4ade80', backgroundColor:'transparent', tension:.2}]},
+      options:{scales:{x:{ticks:{color:'#94a3b8'},grid:{display:false}},
+        y:{ticks:{color:'#94a3b8'},grid:{color:'#273449'}}},
+        plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}}}}});
+  }
+}
+
 /* ============ MORE ============ */
 function renderMore(){
   const bal = balances();
   $('view-more').innerHTML = `
     <div class="banner">Signed in as <b>${esc(S.user.email)}</b> — same login on laptop &amp; iPhone keeps everything in sync.</div>
-    <div class="row2" style="margin-bottom:14px">
+    <div class="grid2" style="margin-bottom:14px">
       <button onclick="openReport()">Monthly report</button>
       <button onclick="openAssetReport()">Assets</button>
       <button onclick="openLiabReport()">Liabilities</button>
+      <button onclick="openProjection()">5-year projection</button>
     </div>
     <div class="card">
     <details open>
