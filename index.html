@@ -988,6 +988,12 @@ function projExcluded(){
 }
 function projYears(){ const y=Number(localStorage.getItem('mf_proj_years')); return [5,10,20].includes(y)?y:5; }
 function setProjYears(y){ localStorage.setItem('mf_proj_years', y); openProjection(); }
+function projIncome(){ return Number(localStorage.getItem('mf_proj_income'))||0; }
+function setProjIncome(v){
+  const x = parseFloat(v);
+  if(x>0) localStorage.setItem('mf_proj_income', x); else localStorage.removeItem('mf_proj_income');
+  openProjection();
+}
 function toggleProjClass(label, on){
   const ex = projExcluded();
   if(on) ex.delete(label); else ex.add(label);
@@ -1021,7 +1027,9 @@ function openProjection(){
   if(!yset.length){ const ys=[...new Set(S.budgets.filter(b=>b.period==='year').map(b=>b.month))].sort();
     if(ys.length) yset = S.budgets.filter(b=>b.period==='year' && b.month===ys[ys.length-1]); }
   const budMonthly = mBud + yset.reduce((s,b)=>s+Number(b.amount),0)/12;
-  const save1 = avgInc-avgExp, save2 = avgInc-budMonthly;
+  const plannedInc = projIncome();
+  const incUsed = plannedInc>0 ? plannedInc : avgInc;
+  const save1 = incUsed-avgExp, save2 = incUsed-budMonthly;
   const Y = projYears();
   const y0 = new Date().getFullYear();
   const labels=[], d1=[], d2=[];
@@ -1040,6 +1048,10 @@ function openProjection(){
     </div>
     <canvas id="chart-proj" height="220"></canvas>
     <div class="row" style="padding:5px 0;margin-top:8px"><div class="muted">Avg monthly income (last ${n} month${n>1?'s':''})</div><div>${fmt(avgInc)}</div></div>
+    <div class="row" style="padding:5px 0"><div class="muted">Planned monthly income (optional)</div>
+      <input type="number" step="0.01" min="0" inputmode="decimal" style="max-width:150px" value="${plannedInc||''}"
+        placeholder="use average" onchange="setProjIncome(this.value)"></div>
+    ${plannedInc>0?`<p class="muted" style="margin:2px 0 0">Projection uses your planned income of ${fmt(plannedInc)} instead of the average.</p>`:''}
     <div class="row" style="padding:5px 0"><div class="muted">Avg monthly spending</div><div>${fmt(avgExp)}</div></div>
     <div class="row" style="padding:5px 0"><div class="muted">Monthly budget (incl. yearly ÷ 12)</div><div>${fmt(budMonthly)}</div></div>
     <div class="row" style="padding:8px 0;border-top:1px solid var(--border)">
