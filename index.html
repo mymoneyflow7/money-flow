@@ -159,8 +159,9 @@ const toBase = (n,cur) => cur===base() ? Number(n) : Number(n)*(rateOf(cur)||1);
 const accCur = id => { const a=acctById(id); return a ? (a.currency||'SGD') : base(); };
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
-const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage'};
+const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage', investment:'Investment (stocks/funds)', crypto:'Crypto', metal:'Gold / Silver', cpf:'CPF'};
 const OWED_TYPES = ['credit_card','loan'];
+const ASSET_TYPES = ['investment','crypto','metal','cpf'];
 
 function getConfig(){ return {url:localStorage.getItem('mf_sb_url'), key:localStorage.getItem('mf_sb_key')}; }
 function saveConfig(){
@@ -254,7 +255,8 @@ function balances(){
 function monthTxns(mk){ return S.txns.filter(t=>t.tx_date.slice(0,7)===mk); }
 function monthTotals(mk){
   let inc=0, exp=0;
-  monthTxns(mk).forEach(t=>{ const v=toBase(t.amount, accCur(t.account_id));
+  monthTxns(mk).forEach(t=>{ if(t.is_adjustment) return;
+    const v=toBase(t.amount, accCur(t.account_id));
     if(t.type==='income') inc+=v; else if(t.type==='expense') exp+=v; });
   return {inc,exp};
 }
@@ -298,6 +300,7 @@ function renderDashboard(){
   const {inc,exp} = monthTotals(mk);
   const groups = [
     {title:'Banks & Cash', types:['bank','cash']},
+    {title:'Investments & Assets', types:ASSET_TYPES},
     {title:'Credit Cards', types:['credit_card']},
     {title:'Loans & Mortgage', types:['loan']}
   ];
@@ -340,7 +343,7 @@ function drawCharts(mk){
   if(typeof Chart==='undefined') return;
   Object.values(charts).forEach(c=>c.destroy()); charts={};
   const byCat = {};
-  monthTxns(mk).filter(t=>t.type==='expense').forEach(t=>{
+  monthTxns(mk).filter(t=>t.type==='expense' && !t.is_adjustment).forEach(t=>{
     const n = catName(t.category_id); byCat[n]=(byCat[n]||0)+toBase(t.amount, accCur(t.account_id));
   });
   const entries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
@@ -538,6 +541,13 @@ function openAcctModal(id){
     <input id="ac-balance" type="number" step="0.01" inputmode="decimal"
       value="${a?Math.abs(Number(a.starting_balance)):'0'}">
     <p class="muted" id="ac-hint" style="margin-top:6px"></p>
+    ${a && ASSET_TYPES.includes(a.type) ? `
+      <label>Update current value (${a.currency||'SGD'})</label>
+      <div class="row2">
+        <input id="ac-newval" type="number" step="0.01" inputmode="decimal" placeholder="today's total value">
+        <button style="flex:0 0 auto" onclick="revalueAcct('${a.id}')">Update</button>
+      </div>
+      <p class="muted" style="margin-top:6px">Tracked value now: ${fmt(balances()[a.id], a.currency||'SGD')}. The difference is saved as Investment Gain/Loss — shown in history but kept out of your income &amp; spending stats.</p>` : ''}
     <button class="primary" onclick="saveAcct('${id||''}')">Save</button>
     ${a?`<button class="danger" style="width:100%;margin-top:8px" onclick="toggleArchive('${a.id}',${!a.archived})">${a.archived?'Unarchive account':'Archive account'}</button>`:''}
   `);
@@ -546,10 +556,16 @@ function openAcctModal(id){
 function acctTypeHint(){
   const t = $('ac-type').value;
   const owed = OWED_TYPES.includes(t);
-  $('ac-bal-label').textContent = (owed?'Amount currently owed':'Starting balance')+' ('+$('ac-currency').value+')';
-  $('ac-hint').textContent = t==='loan'
-    ? 'Tip: record monthly payments as a Transfer from your bank to this loan (principal), plus an Expense on the loan for the interest portion.'
-    : t==='credit_card' ? 'Card spending = Expense on this card. Paying the bill = Transfer from bank to this card.' : '';
+  $('ac-bal-label').textContent = (owed?'Amount currently owed':(ASSET_TYPES.includes(t)?'Current value':'Starting balance'))+' ('+$('ac-currency').value+')';
+  const hints = {
+    loan:'Tip: record monthly payments as a Transfer from your bank to this loan (principal), plus an Expense on the loan for the interest portion.',
+    credit_card:'Card spending = Expense on this card. Paying the bill = Transfer from bank to this card.',
+    investment:'Buying in = Transfer from your bank. Update the market value anytime by editing this account; dividends = Income on this account.',
+    crypto:'Track the fiat value of your holdings (pick the currency you value them in). Buys = Transfer from bank; update market value by editing this account.',
+    metal:'Track the current market value of your gold/silver. Purchases = Transfer from bank; revalue anytime by editing this account.',
+    cpf:'Monthly contributions = Income into this account (add a "CPF Contribution" category). Cash top-ups = Transfer from bank.'
+  };
+  $('ac-hint').textContent = hints[t]||'';
 }
 async function saveAcct(id){
   const name=$('ac-name').value.trim(); if(!name){ alert('Enter a name.'); return; }
@@ -563,6 +579,26 @@ async function saveAcct(id){
   if(error){ alert(error.message); return; }
   closeModal(); await refresh();
 }
+async function revalueAcct(id){
+  const a = acctById(id); if(!a) return;
+  const nowVal = balances()[id];
+  const v = parseFloat($('ac-newval').value);
+  if(isNaN(v)){ alert("Enter today's total value first."); return; }
+  const diff = Math.round((v-nowVal)*100)/100;
+  if(!diff){ alert('Value is unchanged.'); return; }
+  const kind = diff>0?'income':'expense';
+  const cname = diff>0?'Investment Gain':'Investment Loss';
+  let cat = S.categories.find(c=>c.name===cname && c.kind===kind);
+  if(!cat){
+    const {data,error} = await sb.from('categories').insert({name:cname, kind}).select().single();
+    if(error){ alert(error.message); return; }
+    cat = data; S.categories.push(cat);
+  }
+  const {error} = await sb.from('transactions').insert({type:kind, amount:Math.abs(diff),
+    account_id:id, category_id:cat.id, tx_date:todayStr(), note:'Value update', is_adjustment:true});
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
 async function toggleArchive(id,arch){
   const {error}=await sb.from('accounts').update({archived:arch}).eq('id',id);
   if(error){ alert(error.message); return; }
@@ -572,7 +608,7 @@ async function toggleArchive(id,arch){
 function renderBudgets(){
   const mk = S.budMonth;
   const spent = {};
-  monthTxns(mk).filter(t=>t.type==='expense').forEach(t=>{
+  monthTxns(mk).filter(t=>t.type==='expense' && !t.is_adjustment).forEach(t=>{
     if(t.category_id) spent[t.category_id]=(spent[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
   });
   const monthStart = mk+'-01';
