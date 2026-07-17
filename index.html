@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f172a">
+<title>Money Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0f172a; --card:#1e293b; --card2:#273449; --border:#334155;
+  --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --green:#4ade80;
+  --red:#f87171; --amber:#fbbf24; --radius:14px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; font-size:16px;}
+.screen{max-width:420px; margin:0 auto; padding:48px 20px;}
+.screen h1{font-size:28px; margin:0 0 4px;}
+.screen p{color:var(--muted); margin:0 0 24px; font-size:14px; line-height:1.5;}
+#app{display:none; max-width:820px; margin:0 auto; padding:16px 16px 96px;}
+label{display:block; font-size:13px; color:var(--muted); margin:14px 0 6px;}
+input,select,textarea{width:100%; padding:12px; border-radius:10px; border:1px solid var(--border);
+  background:var(--card); color:var(--text); font-size:16px; outline:none;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+button{cursor:pointer; font-size:15px; border:none; border-radius:10px; padding:12px 16px;
+  background:var(--card2); color:var(--text); font-weight:600;}
+button.primary{background:var(--accent); color:#082032; width:100%; margin-top:20px;}
+button.link{background:none; color:var(--accent); font-weight:500; padding:8px;}
+button.danger{background:none; color:var(--red); font-weight:500;}
+button.small{padding:7px 12px; font-size:13px;}
+.msg{margin-top:14px; font-size:14px; color:var(--amber); min-height:20px;}
+.card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px; margin-bottom:14px;}
+.card h3{margin:0 0 10px; font-size:14px; color:var(--muted); font-weight:600;
+  text-transform:uppercase; letter-spacing:.5px;}
+.row{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+.row2{display:flex; gap:10px;}
+.row2>*{flex:1;}
+.pos{color:var(--green);} .neg{color:var(--red);}
+.big{font-size:26px; font-weight:700;}
+.muted{color:var(--muted); font-size:13px;}
+.item{display:flex; justify-content:space-between; align-items:center; padding:12px 0;
+  border-bottom:1px solid var(--border); cursor:pointer;}
+.item:last-child{border-bottom:none;}
+.item .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+.datehdr{font-size:12px; color:var(--muted); margin:16px 0 2px; font-weight:600;}
+.pill{display:inline-block; font-size:11px; padding:2px 8px; border-radius:99px;
+  background:var(--card2); color:var(--muted); margin-left:6px;}
+.seg{display:flex; background:var(--card2); border-radius:10px; padding:3px; margin-top:6px;}
+.seg button{flex:1; background:none; padding:9px 4px; font-size:14px; color:var(--muted); border-radius:8px;}
+.seg button.on{background:var(--accent); color:#082032;}
+.monthnav{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+.monthnav b{font-size:17px;}
+.monthnav button{padding:8px 16px; font-size:18px; line-height:1;}
+.bar{height:8px; background:var(--card2); border-radius:99px; overflow:hidden; margin-top:8px;}
+.bar>div{height:100%; background:var(--green); border-radius:99px;}
+.bar>div.over{background:var(--red);}
+#nav{position:fixed; bottom:0; left:0; right:0; display:flex; justify-content:space-around;
+  align-items:center; background:rgba(15,23,42,.92); backdrop-filter:blur(12px);
+  border-top:1px solid var(--border); padding:8px 4px calc(8px + env(safe-area-inset-bottom));
+  z-index:50;}
+#nav button{background:none; color:var(--muted); display:flex; flex-direction:column;
+  align-items:center; gap:2px; font-size:11px; padding:4px 10px; font-weight:500;}
+#nav button.on{color:var(--accent);}
+#nav button .ico{font-size:20px;}
+#nav #nav-add{background:var(--accent); color:#082032; border-radius:99px; width:52px; height:52px;
+  font-size:28px; justify-content:center; margin-top:-18px; box-shadow:0 4px 14px rgba(56,189,248,.4);}
+#modal-wrap{display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100;
+  align-items:flex-end; justify-content:center;}
+#modal{background:var(--card); border-radius:20px 20px 0 0; width:100%; max-width:560px;
+  max-height:88vh; overflow-y:auto; padding:20px 20px calc(24px + env(safe-area-inset-bottom));}
+@media(min-width:640px){
+  #modal-wrap{align-items:center;}
+  #modal{border-radius:20px;}
+}
+#modal h2{margin:0 0 6px; font-size:19px;}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+@media(min-width:700px){ .acct-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px;} .acct-grid .card{margin-bottom:0;} }
+details{border-bottom:1px solid var(--border); padding:4px 0;}
+details summary{padding:14px 0; font-weight:600; cursor:pointer; list-style:none; display:flex; justify-content:space-between;}
+details summary::after{content:'›'; color:var(--muted); transform:rotate(90deg);}
+canvas{max-width:100%;}
+table.preview{width:100%; font-size:12px; border-collapse:collapse; margin-top:10px;}
+table.preview td,table.preview th{border:1px solid var(--border); padding:4px 6px; text-align:left;
+  white-space:nowrap; overflow:hidden; max-width:110px; text-overflow:ellipsis;}
+.banner{background:var(--card2); border:1px solid var(--border); border-radius:10px;
+  padding:10px 14px; font-size:13px; color:var(--muted); margin-bottom:14px;}
+</style>
+</head>
+<body>
+
+<!-- 1. Supabase connection setup -->
+<div id="screen-config" class="screen" style="display:none">
+  <h1>Money Flow</h1>
+  <p>One-time setup: connect your free Supabase project. See SETUP.md for how to create it (about 5 minutes).</p>
+  <label>Supabase Project URL</label>
+  <input id="cfg-url" placeholder="https://xxxx.supabase.co" autocapitalize="off">
+  <label>Supabase anon public key</label>
+  <input id="cfg-key" placeholder="eyJhbGciOi..." autocapitalize="off">
+  <button class="primary" onclick="saveConfig()">Connect</button>
+  <div class="msg" id="cfg-msg"></div>
+</div>
+
+<!-- 2. Sign in / sign up -->
+<div id="screen-auth" class="screen" style="display:none">
+  <h1>Money Flow</h1>
+  <p>Sign in — the same account works on your laptop and iPhone, data syncs automatically.</p>
+  <label>Email</label>
+  <input id="auth-email" type="email" autocapitalize="off">
+  <label>Password</label>
+  <input id="auth-pass" type="password">
+  <button class="primary" onclick="signIn()">Sign in</button>
+  <button class="link" style="width:100%" onclick="signUp()">First time? Create account</button>
+  <div class="msg" id="auth-msg"></div>
+</div>
+
+<!-- 3. Main app -->
+<div id="app">
+  <div id="view-dashboard"></div>
+  <div id="view-txns" style="display:none"></div>
+  <div id="view-budgets" style="display:none"></div>
+  <div id="view-more" style="display:none"></div>
+</div>
+
+<nav id="nav" style="display:none">
+  <button id="nav-dashboard" onclick="showView('dashboard')"><span class="ico">◧</span>Home</button>
+  <button id="nav-txns" onclick="showView('txns')"><span class="ico">☰</span>Activity</button>
+  <button id="nav-add" onclick="openTxModal()">+</button>
+  <button id="nav-budgets" onclick="showView('budgets')"><span class="ico">◔</span>Budget</button>
+  <button id="nav-more" onclick="showView('more')"><span class="ico">⚙</span>More</button>
+</nav>
+
+<div id="modal-wrap" onclick="if(event.target===this)closeModal()">
+  <div id="modal"></div>
+</div>
+
+<script>
+'use strict';
+/* ============ CONFIG & INIT ============ */
+let sb = null;
+const S = { user:null, accounts:[], categories:[], txns:[], budgets:[], settings:{base_currency:'SGD', fx_rates:{}},
+  view:'dashboard', txnMonth:monthKey(new Date()), budMonth:monthKey(new Date()),
+  txnFilter:{account:'',category:'',type:'',q:''} };
+let charts = {};
+
+function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function monthLabel(mk){ const [y,m]=mk.split('-'); return new Date(y,m-1,1).toLocaleDateString('en-SG',{month:'long',year:'numeric'}); }
+function shiftMonth(mk,n){ const [y,m]=mk.split('-').map(Number); const d=new Date(y,m-1+n,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const CURRENCIES = ['SGD','MYR','USD','EUR','GBP','JPY','IDR','THB','AUD','CNY','HKD','INR'];
+const base = () => (S.settings && S.settings.base_currency) || 'SGD';
+const fmt = (n,cur) => new Intl.NumberFormat('en-SG',{style:'currency',currency:cur||base()}).format(n);
+const rateOf = cur => cur===base() ? 1 : Number((S.settings.fx_rates||{})[cur])||0;
+const toBase = (n,cur) => cur===base() ? Number(n) : Number(n)*(rateOf(cur)||1);
+const accCur = id => { const a=acctById(id); return a ? (a.currency||'SGD') : base(); };
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const ACCT_TYPES = {bank:'Bank account', credit_card:'Credit card', cash:'Cash', loan:'Loan / Mortgage'};
+const OWED_TYPES = ['credit_card','loan'];
+
+function getConfig(){ return {url:localStorage.getItem('mf_sb_url'), key:localStorage.getItem('mf_sb_key')}; }
+function saveConfig(){
+  const url = $('cfg-url').value.trim().replace(/\/$/,''), key = $('cfg-key').value.trim();
+  if(!/^https:\/\/.+\.supabase\.co$/.test(url)){ $('cfg-msg').textContent='URL should look like https://xxxx.supabase.co'; return; }
+  if(key.length < 30){ $('cfg-msg').textContent='That does not look like an anon key.'; return; }
+  localStorage.setItem('mf_sb_url',url); localStorage.setItem('mf_sb_key',key);
+  location.reload();
+}
+function disconnectSupabase(){
+  if(!confirm('Disconnect this device from Supabase? Your data stays safe in the cloud.')) return;
+  localStorage.removeItem('mf_sb_url'); localStorage.removeItem('mf_sb_key'); location.reload();
+}
+
+async function boot(){
+  const cfg = getConfig();
+  if(!cfg.url || !cfg.key){ $('screen-config').style.display='block'; return; }
+  sb = supabase.createClient(cfg.url, cfg.key);
+  const {data:{session}} = await sb.auth.getSession();
+  if(session){ S.user = session.user; await enterApp(); }
+  else $('screen-auth').style.display='block';
+  sb.auth.onAuthStateChange((ev,sess)=>{
+    if(ev==='SIGNED_OUT') location.reload();
+  });
+}
+
+/* ============ AUTH ============ */
+async function signIn(){
+  $('auth-msg').textContent='Signing in…';
+  const {data,error} = await sb.auth.signInWithPassword({email:$('auth-email').value.trim(), password:$('auth-pass').value});
+  if(error){ $('auth-msg').textContent = error.message; return; }
+  S.user = data.user; $('screen-auth').style.display='none'; await enterApp();
+}
+async function signUp(){
+  $('auth-msg').textContent='Creating account…';
+  const {data,error} = await sb.auth.signUp({email:$('auth-email').value.trim(), password:$('auth-pass').value});
+  if(error){ $('auth-msg').textContent = error.message; return; }
+  if(data.session){ S.user = data.user; $('screen-auth').style.display='none'; await enterApp(); }
+  else $('auth-msg').textContent = 'Account created — check your email to confirm, then sign in.';
+}
+async function signOut(){ await sb.auth.signOut(); }
+
+/* ============ DATA ============ */
+async function loadAll(){
+  const [a,c,t,b,st] = await Promise.all([
+    sb.from('accounts').select('*').order('created_at'),
+    sb.from('categories').select('*').order('name'),
+    sb.from('transactions').select('*').order('tx_date',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('budgets').select('*'),
+    sb.from('settings').select('*').maybeSingle()
+  ]);
+  for(const r of [a,c,t,b]) if(r.error) { alert('Load error: '+r.error.message); return; }
+  S.accounts=a.data; S.categories=c.data; S.txns=t.data; S.budgets=b.data;
+  if(st.data) S.settings = st.data;
+}
+const DEFAULT_CATS = {
+  expense:['Food & Dining','Groceries','Transport','Shopping','Bills & Utilities','Mortgage Interest','Housing','Health','Entertainment','Travel','Education','Other'],
+  income:['Salary','Bonus','Interest','Investment','Other Income']
+};
+async function seedCategories(){
+  if(S.categories.length) return;
+  const rows = [];
+  for(const k in DEFAULT_CATS) DEFAULT_CATS[k].forEach(n=>rows.push({name:n,kind:k}));
+  const {error} = await sb.from('categories').insert(rows);
+  if(!error){ const {data} = await sb.from('categories').select('*').order('name'); S.categories=data; }
+}
+async function enterApp(){
+  await loadAll();
+  await seedCategories();
+  $('app').style.display='block'; $('nav').style.display='flex';
+  showView('dashboard');
+  maybeAutoBackup();
+}
+async function refresh(){ await loadAll(); render(); }
+
+function catById(id){ return S.categories.find(c=>c.id===id); }
+function acctById(id){ return S.accounts.find(a=>a.id===id); }
+function catName(id){ const c=catById(id); return c?c.name:'(uncategorised)'; }
+
+function balances(){
+  const bal = {};
+  S.accounts.forEach(a=> bal[a.id]=Number(a.starting_balance));
+  S.txns.forEach(t=>{
+    const amt = Number(t.amount);
+    if(t.type==='income') bal[t.account_id]+=amt;
+    else if(t.type==='expense') bal[t.account_id]-=amt;
+    else { bal[t.account_id]-=amt; if(t.transfer_account_id!=null && bal[t.transfer_account_id]!==undefined) bal[t.transfer_account_id]+=Number(t.transfer_amount||t.amount); }
+  });
+  return bal;
+}
+function monthTxns(mk){ return S.txns.filter(t=>t.tx_date.slice(0,7)===mk); }
+function monthTotals(mk){
+  let inc=0, exp=0;
+  monthTxns(mk).forEach(t=>{ const v=toBase(t.amount, accCur(t.account_id));
+    if(t.type==='income') inc+=v; else if(t.type==='expense') exp+=v; });
+  return {inc,exp};
+}
+function currenciesInUse(){ return [...new Set(S.accounts.filter(a=>!a.archived).map(a=>a.currency||'SGD'))].filter(c=>c!==base()); }
+async function saveRate(cur,val){
+  const rates = {...(S.settings.fx_rates||{})};
+  const v = parseFloat(val);
+  if(v>0) rates[cur]=v; else delete rates[cur];
+  const {error} = await sb.from('settings').upsert({user_id:S.user.id, base_currency:base(), fx_rates:rates});
+  if(error){ alert(error.message); return; }
+  S.settings.fx_rates = rates; render();
+}
+
+/* ============ NAVIGATION ============ */
+function showView(v){
+  S.view=v;
+  ['dashboard','txns','budgets','more'].forEach(x=>{
+    $('view-'+x).style.display = x===v?'block':'none';
+    $('nav-'+x).classList.toggle('on', x===v);
+  });
+  render();
+  window.scrollTo(0,0);
+}
+function render(){
+  if(S.view==='dashboard') renderDashboard();
+  else if(S.view==='txns') renderTxns();
+  else if(S.view==='budgets') renderBudgets();
+  else renderMore();
+}
+function openModal(html){ $('modal').innerHTML=html; $('modal-wrap').style.display='flex'; }
+function closeModal(){ $('modal-wrap').style.display='none'; $('modal').innerHTML=''; }
+
+/* ============ DASHBOARD ============ */
+function renderDashboard(){
+  const bal = balances(), mk = monthKey(new Date());
+  const active = S.accounts.filter(a=>!a.archived);
+  let assets=0, debts=0;
+  active.forEach(a=>{ const b=toBase(bal[a.id], a.currency||'SGD'); if(b>=0) assets+=b; else debts+=b; });
+  const missingRates = currenciesInUse().filter(c=>!rateOf(c));
+  const net = assets+debts;
+  const {inc,exp} = monthTotals(mk);
+  const groups = [
+    {title:'Banks & Cash', types:['bank','cash']},
+    {title:'Credit Cards', types:['credit_card']},
+    {title:'Loans & Mortgage', types:['loan']}
+  ];
+  let acctHtml = '';
+  groups.forEach(g=>{
+    const list = active.filter(a=>g.types.includes(a.type));
+    if(!list.length) return;
+    acctHtml += `<div class="card"><h3>${g.title}</h3>` + list.map(a=>{
+      const b=bal[a.id], cur=a.currency||'SGD';
+      const cls = b<0?'neg':'';
+      const label = b<0 && OWED_TYPES.includes(a.type) ? 'owed ' : '';
+      const approx = cur!==base() ? `<div class="sub">≈ ${fmt(toBase(Math.abs(b),cur))}</div>` : '';
+      return `<div class="item" onclick="openAcctModal('${a.id}')">
+        <div>${esc(a.name)}<div class="sub">${ACCT_TYPES[a.type]} · ${cur}</div></div>
+        <div style="text-align:right"><span class="${cls}" style="font-weight:600">${label}${fmt(Math.abs(b),cur)}</span>${approx}</div></div>`;
+    }).join('') + `</div>`;
+  });
+  if(!active.length) acctHtml = `<div class="card"><p class="muted">No accounts yet.</p><button class="primary" onclick="openAcctModal()">Add your first account</button></div>`;
+
+  $('view-dashboard').innerHTML = `
+    ${missingRates.length?`<div class="banner">Set the ${missingRates.join(', ')} exchange rate in More → Currencies &amp; rates so totals convert correctly (until then 1:1 is assumed).</div>`:''}
+    <div class="card">
+      <h3>Net worth (${base()})</h3>
+      <div class="big ${net<0?'neg':''}">${fmt(net)}</div>
+      <div class="muted" style="margin-top:4px">Assets ${fmt(assets)} · Debts ${fmt(Math.abs(debts))}</div>
+    </div>
+    <div class="card"><h3>${monthLabel(mk)}</h3>
+      <div class="row2">
+        <div><div class="muted">Income</div><div class="pos" style="font-size:20px;font-weight:700">${fmt(inc)}</div></div>
+        <div><div class="muted">Expenses</div><div class="neg" style="font-size:20px;font-weight:700">${fmt(exp)}</div></div>
+        <div><div class="muted">Net</div><div style="font-size:20px;font-weight:700" class="${inc-exp>=0?'pos':'neg'}">${fmt(inc-exp)}</div></div>
+      </div>
+    </div>
+    <div class="acct-grid">${acctHtml}</div>
+    <div class="card" style="margin-top:14px"><h3>Spending by category — ${monthLabel(mk)}</h3><canvas id="chart-donut" height="230"></canvas></div>
+    <div class="card"><h3>Last 6 months</h3><canvas id="chart-bar" height="200"></canvas></div>`;
+  drawCharts(mk);
+}
+function drawCharts(mk){
+  if(typeof Chart==='undefined') return;
+  Object.values(charts).forEach(c=>c.destroy()); charts={};
+  const byCat = {};
+  monthTxns(mk).filter(t=>t.type==='expense').forEach(t=>{
+    const n = catName(t.category_id); byCat[n]=(byCat[n]||0)+toBase(t.amount, accCur(t.account_id));
+  });
+  const entries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const palette = ['#38bdf8','#4ade80','#fbbf24','#f87171','#a78bfa','#fb923c','#2dd4bf','#f472b6','#94a3b8','#facc15','#60a5fa','#c084fc'];
+  if(entries.length && $('chart-donut')){
+    charts.donut = new Chart($('chart-donut'), {type:'doughnut',
+      data:{labels:entries.map(e=>e[0]), datasets:[{data:entries.map(e=>e[1]), backgroundColor:palette, borderWidth:0}]},
+      options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8',boxWidth:12,font:{size:11}}}}}});
+  } else if($('chart-donut')) $('chart-donut').replaceWith(Object.assign(document.createElement('p'),{className:'muted',textContent:'No expenses this month yet.'}));
+  const months=[]; for(let i=5;i>=0;i--) months.push(shiftMonth(mk,-i));
+  if($('chart-bar')){
+    charts.bar = new Chart($('chart-bar'), {type:'bar',
+      data:{labels:months.map(m=>monthLabel(m).slice(0,3)+' '+m.slice(2,4)),
+        datasets:[
+          {label:'Income', data:months.map(m=>monthTotals(m).inc), backgroundColor:'#4ade80', borderRadius:4},
+          {label:'Expenses', data:months.map(m=>monthTotals(m).exp), backgroundColor:'#f87171', borderRadius:4}]},
+      options:{scales:{x:{ticks:{color:'#94a3b8'},grid:{display:false}},
+        y:{ticks:{color:'#94a3b8'},grid:{color:'#273449'}}},
+        plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}}}}});
+  }
+}
+/* ============ TRANSACTIONS VIEW ============ */
+function renderTxns(){
+  const mk = S.txnMonth, f = S.txnFilter;
+  let list = monthTxns(mk);
+  if(f.account) list=list.filter(t=>t.account_id===f.account||t.transfer_account_id===f.account);
+  if(f.category) list=list.filter(t=>t.category_id===f.category);
+  if(f.type) list=list.filter(t=>t.type===f.type);
+  if(f.q) list=list.filter(t=>(t.note||'').toLowerCase().includes(f.q.toLowerCase()));
+  const {inc,exp} = monthTotals(mk);
+  const byDate = {};
+  list.forEach(t=>{ (byDate[t.tx_date]=byDate[t.tx_date]||[]).push(t); });
+  const rows = Object.keys(byDate).sort().reverse().map(d=>{
+    const dl = new Date(d+'T00:00:00').toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short'});
+    return `<div class="datehdr">${dl}</div>` + byDate[d].map(txRow).join('');
+  }).join('') || '<p class="muted" style="margin-top:20px">No transactions match.</p>';
+
+  $('view-txns').innerHTML = `
+    <div class="monthnav">
+      <button onclick="S.txnMonth=shiftMonth(S.txnMonth,-1);render()">‹</button>
+      <b>${monthLabel(mk)}</b>
+      <button onclick="S.txnMonth=shiftMonth(S.txnMonth,1);render()">›</button>
+    </div>
+    <div class="card"><div class="row2">
+      <div><div class="muted">Income</div><div class="pos" style="font-weight:700">${fmt(inc)}</div></div>
+      <div><div class="muted">Expenses</div><div class="neg" style="font-weight:700">${fmt(exp)}</div></div>
+      <div><div class="muted">Net</div><div class="${inc-exp>=0?'pos':'neg'}" style="font-weight:700">${fmt(inc-exp)}</div></div>
+    </div></div>
+    <div class="row2" style="margin-bottom:6px">
+      <select onchange="S.txnFilter.account=this.value;render()">
+        <option value="">All accounts</option>
+        ${S.accounts.map(a=>`<option value="${a.id}" ${f.account===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}
+      </select>
+      <select onchange="S.txnFilter.type=this.value;render()">
+        <option value="">All types</option>
+        <option value="expense" ${f.type==='expense'?'selected':''}>Expenses</option>
+        <option value="income" ${f.type==='income'?'selected':''}>Income</option>
+        <option value="transfer" ${f.type==='transfer'?'selected':''}>Transfers</option>
+      </select>
+    </div>
+    <div class="row2">
+      <select onchange="S.txnFilter.category=this.value;render()">
+        <option value="">All categories</option>
+        ${S.categories.map(c=>`<option value="${c.id}" ${f.category===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+      </select>
+      <input placeholder="Search notes…" value="${esc(f.q)}" oninput="S.txnFilter.q=this.value;render()">
+    </div>
+    <div class="card" style="margin-top:12px">${rows}</div>`;
+}
+function txRow(t){
+  const a = acctById(t.account_id);
+  let title, amtHtml;
+  const cur = a ? (a.currency||'SGD') : base();
+  if(t.type==='transfer'){
+    const b = acctById(t.transfer_account_id);
+    title = `${a?esc(a.name):'?'} → ${b?esc(b.name):'?'}`;
+    const recv = t.transfer_amount && b && (b.currency||'SGD')!==cur ? `<div class="sub">→ ${fmt(t.transfer_amount, b.currency||'SGD')}</div>` : '';
+    amtHtml = `<div style="text-align:right"><span style="font-weight:600">${fmt(t.amount,cur)}</span>${recv}</div>`;
+  } else {
+    title = esc(catName(t.category_id));
+    amtHtml = t.type==='income'
+      ? `<div class="pos" style="font-weight:600">+${fmt(t.amount,cur)}</div>`
+      : `<div class="neg" style="font-weight:600">−${fmt(t.amount,cur)}</div>`;
+  }
+  const sub = [t.type==='transfer'?'Transfer':(a?a.name:''), t.note].filter(Boolean).map(esc).join(' · ');
+  return `<div class="item" onclick="openTxModal('${t.id}')">
+    <div>${title}<div class="sub">${sub}</div></div>${amtHtml}</div>`;
+}
+
+/* ============ TRANSACTION MODAL ============ */
+function openTxModal(id){
+  if(!S.accounts.filter(a=>!a.archived).length){ alert('Add an account first (More → Accounts).'); return; }
+  const t = id ? S.txns.find(x=>x.id===id) : null;
+  const type = t?t.type:'expense';
+  openModal(`
+    <h2>${t?'Edit':'New'} transaction</h2>
+    <div class="seg" id="tx-seg">
+      ${['expense','income','transfer'].map(k=>`<button class="${k===type?'on':''}" onclick="setTxType('${k}')">${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}
+    </div>
+    <input type="hidden" id="tx-type" value="${type}">
+    <label>Amount (<span id="tx-cur">${base()}</span>)</label>
+    <input id="tx-amount" type="number" step="0.01" min="0.01" inputmode="decimal" value="${t?t.amount:''}" placeholder="0.00">
+    <label id="tx-acct-label">${type==='transfer'?'From account':'Account'}</label>
+    <select id="tx-account" onchange="txCurChange()">${acctOptions(t?t.account_id:null)}</select>
+    <div id="tx-cat-wrap" style="display:${type==='transfer'?'none':'block'}">
+      <label>Category</label>
+      <select id="tx-category">${catOptions(type==='transfer'?'expense':type, t?t.category_id:null)}</select>
+    </div>
+    <div id="tx-to-wrap" style="display:${type==='transfer'?'block':'none'}">
+      <label>To account</label>
+      <select id="tx-to" onchange="txCurChange()">${acctOptions(t?t.transfer_account_id:null)}</select>
+      <div id="tx-xfer-wrap" style="display:none">
+        <label>Amount received (<span id="tx-cur2"></span>)</label>
+        <input id="tx-amount2" type="number" step="0.01" min="0.01" inputmode="decimal" value="${t&&t.transfer_amount?t.transfer_amount:''}" placeholder="amount arriving in the other currency">
+      </div>
+    </div>
+    <label>Date</label>
+    <input id="tx-date" type="date" value="${t?t.tx_date:todayStr()}">
+    <label>Note (optional)</label>
+    <input id="tx-note" value="${t?esc(t.note||''):''}" placeholder="e.g. lunch, taxi, July mortgage payment">
+    <button class="primary" onclick="saveTx('${id||''}')">Save</button>
+    ${t?`<button class="danger" style="width:100%;margin-top:8px" onclick="deleteTx('${t.id}')">Delete transaction</button>`:''}
+  `);
+  txCurChange();
+}
+function txCurChange(){
+  const cur = accCur($('tx-account').value);
+  $('tx-cur').textContent = cur;
+  const isXfer = $('tx-type').value==='transfer';
+  const toCur = isXfer ? accCur($('tx-to').value) : cur;
+  const cross = isXfer && toCur!==cur;
+  $('tx-xfer-wrap').style.display = cross?'block':'none';
+  if(cross) $('tx-cur2').textContent = toCur;
+}
+function acctOptions(sel){
+  return S.accounts.filter(a=>!a.archived||a.id===sel)
+    .map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${esc(a.name)} — ${ACCT_TYPES[a.type]}, ${a.currency||'SGD'}</option>`).join('');
+}
+function catOptions(kind,sel){
+  return S.categories.filter(c=>c.kind===kind)
+    .map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.name)}</option>`).join('');
+}
+function setTxType(k){
+  $('tx-type').value=k;
+  document.querySelectorAll('#tx-seg button').forEach(b=>b.classList.toggle('on',b.textContent.toLowerCase()===k));
+  $('tx-cat-wrap').style.display = k==='transfer'?'none':'block';
+  $('tx-to-wrap').style.display = k==='transfer'?'block':'none';
+  $('tx-acct-label').textContent = k==='transfer'?'From account':'Account';
+  if(k!=='transfer') $('tx-category').innerHTML = catOptions(k,null);
+  txCurChange();
+}
+async function saveTx(id){
+  const type=$('tx-type').value, amount=parseFloat($('tx-amount').value);
+  if(!(amount>0)){ alert('Enter an amount greater than 0.'); return; }
+  const row = { type, amount, account_id:$('tx-account').value,
+    tx_date:$('tx-date').value||todayStr(), note:$('tx-note').value.trim()||null,
+    category_id: type==='transfer'?null:($('tx-category').value||null),
+    transfer_account_id: type==='transfer'?$('tx-to').value:null,
+    transfer_amount: null };
+  if(type==='transfer' && row.account_id===row.transfer_account_id){ alert('Choose two different accounts.'); return; }
+  if(type==='transfer' && accCur(row.account_id)!==accCur(row.transfer_account_id)){
+    const recv = parseFloat($('tx-amount2').value);
+    if(!(recv>0)){ alert('Enter the amount received in '+accCur(row.transfer_account_id)+'.'); return; }
+    row.transfer_amount = recv;
+  }
+  const q = id ? sb.from('transactions').update(row).eq('id',id) : sb.from('transactions').insert(row);
+  const {error} = await q;
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+async function deleteTx(id){
+  if(!confirm('Delete this transaction?')) return;
+  const {error} = await sb.from('transactions').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+
+/* ============ ACCOUNTS ============ */
+function openAcctModal(id){
+  const a = id ? acctById(id) : null;
+  const owed = a && OWED_TYPES.includes(a.type);
+  openModal(`
+    <h2>${a?'Edit':'New'} account</h2>
+    <label>Name</label>
+    <input id="ac-name" value="${a?esc(a.name):''}" placeholder="e.g. DBS Savings, UOB Visa, HDB Mortgage">
+    <label>Type</label>
+    <select id="ac-type" onchange="acctTypeHint()" ${a?'disabled':''}>
+      ${Object.entries(ACCT_TYPES).map(([k,v])=>`<option value="${k}" ${a&&a.type===k?'selected':''}>${v}</option>`).join('')}
+    </select>
+    <label>Currency</label>
+    <select id="ac-currency" onchange="acctTypeHint()">
+      ${CURRENCIES.map(c=>`<option value="${c}" ${(a?(a.currency||'SGD'):'SGD')===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <label id="ac-bal-label">${owed?'Amount currently owed':'Starting balance'}</label>
+    <input id="ac-balance" type="number" step="0.01" inputmode="decimal"
+      value="${a?Math.abs(Number(a.starting_balance)):'0'}">
+    <p class="muted" id="ac-hint" style="margin-top:6px"></p>
+    <button class="primary" onclick="saveAcct('${id||''}')">Save</button>
+    ${a?`<button class="danger" style="width:100%;margin-top:8px" onclick="toggleArchive('${a.id}',${!a.archived})">${a.archived?'Unarchive account':'Archive account'}</button>`:''}
+  `);
+  acctTypeHint();
+}
+function acctTypeHint(){
+  const t = $('ac-type').value;
+  const owed = OWED_TYPES.includes(t);
+  $('ac-bal-label').textContent = (owed?'Amount currently owed':'Starting balance')+' ('+$('ac-currency').value+')';
+  $('ac-hint').textContent = t==='loan'
+    ? 'Tip: record monthly payments as a Transfer from your bank to this loan (principal), plus an Expense on the loan for the interest portion.'
+    : t==='credit_card' ? 'Card spending = Expense on this card. Paying the bill = Transfer from bank to this card.' : '';
+}
+async function saveAcct(id){
+  const name=$('ac-name').value.trim(); if(!name){ alert('Enter a name.'); return; }
+  const type=$('ac-type').value;
+  let bal=parseFloat($('ac-balance').value)||0;
+  if(OWED_TYPES.includes(type)) bal = -Math.abs(bal);
+  const row={name, type, starting_balance:bal, currency:$('ac-currency').value};
+  if(id) delete row.type; // type locked after creation
+  const q = id ? sb.from('accounts').update(row).eq('id',id) : sb.from('accounts').insert(row);
+  const {error}=await q;
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+async function toggleArchive(id,arch){
+  const {error}=await sb.from('accounts').update({archived:arch}).eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+/* ============ BUDGETS ============ */
+function renderBudgets(){
+  const mk = S.budMonth;
+  const spent = {};
+  monthTxns(mk).filter(t=>t.type==='expense').forEach(t=>{
+    if(t.category_id) spent[t.category_id]=(spent[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
+  });
+  const monthStart = mk+'-01';
+  const buds = S.budgets.filter(b=>b.month===monthStart);
+  const budByCat = {}; buds.forEach(b=>budByCat[b.category_id]=b);
+  const cats = S.categories.filter(c=>c.kind==='expense');
+  let totalBud=0, totalSpent=0;
+  const rows = cats.map(c=>{
+    const b = budByCat[c.id], sp = spent[c.id]||0;
+    if(!b && !sp) return '';
+    const amt = b?Number(b.amount):0;
+    totalBud+=amt; totalSpent+=sp;
+    const pct = amt>0 ? Math.min(100, sp/amt*100) : 0;
+    const over = amt>0 && sp>amt;
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div class="row">
+        <div>${esc(c.name)}</div>
+        <div style="text-align:right">
+          <span class="${over?'neg':''}" style="font-weight:600">${fmt(sp)}</span>
+          <span class="muted"> / </span>
+          <button class="link small" onclick="editBudget('${c.id}')">${amt>0?fmt(amt):'set budget'}</button>
+        </div>
+      </div>
+      ${amt>0?`<div class="bar"><div class="${over?'over':''}" style="width:${pct}%"></div></div>`:''}
+    </div>`;
+  }).join('');
+  const unbudgeted = cats.filter(c=>!budByCat[c.id] && !spent[c.id]);
+  $('view-budgets').innerHTML = `
+    <div class="monthnav">
+      <button onclick="S.budMonth=shiftMonth(S.budMonth,-1);render()">‹</button>
+      <b>${monthLabel(mk)}</b>
+      <button onclick="S.budMonth=shiftMonth(S.budMonth,1);render()">›</button>
+    </div>
+    <div class="card"><h3>Total</h3>
+      <div class="row"><div class="big ${totalBud>0&&totalSpent>totalBud?'neg':''}">${fmt(totalSpent)}</div>
+      <div class="muted">of ${fmt(totalBud)} budgeted</div></div>
+      ${totalBud>0?`<div class="bar"><div class="${totalSpent>totalBud?'over':''}" style="width:${Math.min(100,totalSpent/totalBud*100)}%"></div></div>`:''}
+    </div>
+    <div class="card">${rows||'<p class="muted">No budgets or spending this month yet.</p>'}
+      ${unbudgeted.length?`<label>Add budget for…</label>
+      <select onchange="if(this.value)editBudget(this.value)">
+        <option value="">Choose category</option>
+        ${unbudgeted.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>`:''}
+      <button class="link small" style="margin-top:12px" onclick="copyLastBudgets()">Copy budgets from last month</button>
+    </div>`;
+}
+function editBudget(catId){
+  const c = catById(catId);
+  const b = S.budgets.find(x=>x.category_id===catId && x.month===S.budMonth+'-01');
+  openModal(`
+    <h2>Budget — ${esc(c.name)}</h2>
+    <p class="muted">${monthLabel(S.budMonth)}</p>
+    <label>Monthly limit (${base()})</label>
+    <input id="bud-amt" type="number" step="0.01" min="0" inputmode="decimal" value="${b?b.amount:''}" placeholder="0 = no budget">
+    <button class="primary" onclick="saveBudget('${catId}')">Save</button>
+  `);
+}
+async function saveBudget(catId){
+  const amt = parseFloat($('bud-amt').value)||0;
+  const month = S.budMonth+'-01';
+  const b = S.budgets.find(x=>x.category_id===catId && x.month===month);
+  let error;
+  if(amt<=0 && b) ({error} = await sb.from('budgets').delete().eq('id',b.id));
+  else if(b) ({error} = await sb.from('budgets').update({amount:amt}).eq('id',b.id));
+  else if(amt>0) ({error} = await sb.from('budgets').insert({category_id:catId, month, amount:amt}));
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+async function copyLastBudgets(){
+  const prev = shiftMonth(S.budMonth,-1)+'-01', cur = S.budMonth+'-01';
+  const have = new Set(S.budgets.filter(b=>b.month===cur).map(b=>b.category_id));
+  const rows = S.budgets.filter(b=>b.month===prev && !have.has(b.category_id))
+    .map(b=>({category_id:b.category_id, month:cur, amount:b.amount}));
+  if(!rows.length){ alert('Nothing to copy from last month.'); return; }
+  const {error} = await sb.from('budgets').insert(rows);
+  if(error){ alert(error.message); return; }
+  await refresh();
+}
+
+/* ============ MORE ============ */
+function renderMore(){
+  const bal = balances();
+  $('view-more').innerHTML = `
+    <div class="banner">Signed in as <b>${esc(S.user.email)}</b> — same login on laptop &amp; iPhone keeps everything in sync.</div>
+    <div class="card">
+    <details open>
+      <summary>Accounts &amp; cards</summary>
+      ${S.accounts.map(a=>`<div class="item" onclick="openAcctModal('${a.id}')">
+        <div>${esc(a.name)}${a.archived?'<span class="pill">archived</span>':''}<div class="sub">${ACCT_TYPES[a.type]} · ${a.currency||'SGD'}</div></div>
+        <div class="${bal[a.id]<0?'neg':''}">${fmt(bal[a.id], a.currency||'SGD')}</div></div>`).join('')||'<p class="muted">None yet.</p>'}
+      <button class="link" onclick="openAcctModal()">＋ Add account / card / loan</button>
+    </details>
+    <details>
+      <summary>Categories</summary>
+      ${['expense','income'].map(k=>`<div class="datehdr">${k==='expense'?'Expense':'Income'} categories</div>`+
+        S.categories.filter(c=>c.kind===k).map(c=>`<div class="item" onclick="openCatModal('${c.id}')"><div>${esc(c.name)}</div><div class="muted">edit</div></div>`).join('')).join('')}
+      <button class="link" onclick="openCatModal()">＋ Add category</button>
+    </details>
+    <details>
+      <summary>Currencies &amp; rates</summary>
+      <p class="muted">Each account has its own currency. Set rates so totals, charts and budgets convert into ${base()}.</p>
+      ${currenciesInUse().map(c=>`<div class="row" style="margin:10px 0"><span>1 ${c} =</span>
+        <input type="number" step="0.0001" min="0" style="max-width:140px" value="${(S.settings.fx_rates||{})[c]||''}"
+          placeholder="rate" onchange="saveRate('${c}',this.value)"><span>${base()}</span></div>`).join('')
+        || `<p class="muted">All accounts are in ${base()} — add an account in another currency to set rates.</p>`}
+    </details>
+    <details>
+      <summary>Import &amp; export</summary>
+      <p class="muted">Import a CSV downloaded from your bank, or export everything.</p>
+      <div class="row2" style="margin-top:10px">
+        <button onclick="openImportModal()">Import CSV</button>
+        <button onclick="exportCSV()">Export CSV</button>
+      </div>
+    </details>
+    <details>
+      <summary>Backup</summary>
+      <p class="muted">Your data lives in Supabase's cloud database. As an extra layer, the app saves a backup file once per day (to this device's Downloads) the first time you open it each day.</p>
+      <label class="row" style="margin:12px 0;cursor:pointer">
+        <span>Daily auto-backup on this device</span>
+        <input type="checkbox" style="width:auto" ${localStorage.getItem('mf_autobackup')!=='off'?'checked':''}
+          onchange="localStorage.setItem('mf_autobackup',this.checked?'on':'off')">
+      </label>
+      <button onclick="downloadBackup()">Download backup now (JSON)</button>
+      <p class="muted" style="margin-top:8px">Last backup on this device: ${localStorage.getItem('mf_last_backup')||'never'}</p>
+    </details>
+    <details>
+      <summary>Account</summary>
+      <button class="danger" onclick="signOut()">Sign out</button>
+      <button class="danger" onclick="disconnectSupabase()">Disconnect Supabase on this device</button>
+    </details>
+    </div>`;
+}
+
+/* ============ CATEGORIES ============ */
+function openCatModal(id){
+  const c = id ? catById(id) : null;
+  openModal(`
+    <h2>${c?'Edit':'New'} category</h2>
+    <label>Name</label>
+    <input id="cat-name" value="${c?esc(c.name):''}" placeholder="e.g. Kids, Insurance, Side income">
+    <label>Type</label>
+    <select id="cat-kind" ${c?'disabled':''}>
+      <option value="expense" ${c&&c.kind==='expense'?'selected':''}>Expense</option>
+      <option value="income" ${c&&c.kind==='income'?'selected':''}>Income</option>
+    </select>
+    <button class="primary" onclick="saveCat('${id||''}')">Save</button>
+    ${c?`<button class="danger" style="width:100%;margin-top:8px" onclick="deleteCat('${c.id}')">Delete category</button>`:''}
+  `);
+}
+async function saveCat(id){
+  const name=$('cat-name').value.trim(); if(!name){ alert('Enter a name.'); return; }
+  const q = id ? sb.from('categories').update({name}).eq('id',id)
+               : sb.from('categories').insert({name, kind:$('cat-kind').value});
+  const {error}=await q;
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+async function deleteCat(id){
+  const used = S.txns.filter(t=>t.category_id===id).length;
+  if(!confirm(used?`${used} transaction(s) use this category; they will become uncategorised. Delete?`:'Delete this category?')) return;
+  const {error}=await sb.from('categories').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
+}
+/* ============ EXPORT / BACKUP ============ */
+function downloadFile(name, content, mime){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},500);
+}
+function csvCell(v){ v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function exportCSV(){
+  const head = 'date,type,account,category,amount,currency,to_account,to_amount,note';
+  const lines = S.txns.map(t=>{
+    const a=acctById(t.account_id), b=acctById(t.transfer_account_id);
+    return [t.tx_date, t.type, a?a.name:'', t.type==='transfer'?'':catName(t.category_id),
+      t.amount, a?(a.currency||'SGD'):'', b?b.name:'', t.transfer_amount||'', t.note||''].map(csvCell).join(',');
+  });
+  downloadFile(`moneyflow-transactions-${todayStr()}.csv`, head+'\n'+lines.join('\n'), 'text/csv');
+}
+function downloadBackup(){
+  const data = { app:'Money Flow', exported_at:new Date().toISOString(), user:S.user.email,
+    accounts:S.accounts, categories:S.categories, transactions:S.txns, budgets:S.budgets, settings:S.settings };
+  downloadFile(`moneyflow-backup-${todayStr()}.json`, JSON.stringify(data,null,1), 'application/json');
+  localStorage.setItem('mf_last_backup', todayStr());
+}
+function maybeAutoBackup(){
+  if(localStorage.getItem('mf_autobackup')==='off') return;
+  if(localStorage.getItem('mf_last_backup')===todayStr()) return;
+  if(!S.txns.length) return;
+  downloadBackup();
+}
+
+/* ============ CSV IMPORT ============ */
+let importRows = [];
+function parseCSV(text){
+  const rows=[]; let row=[], cell='', inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(inQ){
+      if(ch==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else inQ=false; }
+      else cell+=ch;
+    } else if(ch==='"') inQ=true;
+    else if(ch===','){ row.push(cell); cell=''; }
+    else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&text[i+1]==='\n')i++; row.push(cell); cell='';
+      if(row.some(c=>c!=='')) rows.push(row); row=[]; }
+    else cell+=ch;
+  }
+  row.push(cell); if(row.some(c=>c!=='')) rows.push(row);
+  return rows;
+}
+function openImportModal(){
+  openModal(`
+    <h2>Import bank CSV</h2>
+    <p class="muted">Download a CSV statement from your bank, then map its columns below.</p>
+    <label>CSV file</label>
+    <input type="file" id="imp-file" accept=".csv,text/csv" onchange="impLoadFile()">
+    <div id="imp-step2" style="display:none">
+      <label>Into account</label>
+      <select id="imp-account">${acctOptions(null)}</select>
+      <div class="grid2">
+        <div><label>Date column</label><select id="imp-col-date"></select></div>
+        <div><label>Date format</label>
+          <select id="imp-datefmt">
+            <option value="ymd">2026-07-17 (YYYY-MM-DD)</option>
+            <option value="dmy">17/07/2026 (DD/MM/YYYY)</option>
+            <option value="mdy">07/17/2026 (MM/DD/YYYY)</option>
+          </select></div>
+        <div><label>Amount column</label><select id="imp-col-amt"></select></div>
+        <div><label>Sign convention</label>
+          <select id="imp-sign">
+            <option value="neg-exp">Negative = expense</option>
+            <option value="neg-inc">Negative = income</option>
+            <option value="all-exp">All rows are expenses</option>
+          </select></div>
+      </div>
+      <label>Description column (saved as note)</label><select id="imp-col-desc"></select>
+      <div id="imp-preview"></div>
+      <button class="primary" onclick="impPreview()">Preview</button>
+      <button class="primary" id="imp-go" style="display:none;background:var(--green)" onclick="impImport()">Import <span id="imp-count"></span> transactions</button>
+    </div>
+  `);
+}
+function impLoadFile(){
+  const f = $('imp-file').files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    importRows = parseCSV(rd.result);
+    if(importRows.length<2){ alert('Could not read rows from that file.'); return; }
+    const header = importRows[0];
+    const opts = header.map((h,i)=>`<option value="${i}">${esc(h||('Column '+(i+1)))}</option>`).join('');
+    ['imp-col-date','imp-col-amt','imp-col-desc'].forEach(id=>$(id).innerHTML=opts+(id==='imp-col-desc'?'<option value="-1">(none)</option>':''));
+    // best-guess mapping
+    header.forEach((h,i)=>{
+      const l=h.toLowerCase();
+      if(/date/.test(l)) $('imp-col-date').value=i;
+      if(/amount|amt|value/.test(l)) $('imp-col-amt').value=i;
+      if(/desc|detail|narrat|reference|particular/.test(l)) $('imp-col-desc').value=i;
+    });
+    $('imp-step2').style.display='block';
+  };
+  rd.readAsText(f);
+}
+function impParseDate(s, fmtSel){
+  s=s.trim().replace(/['"]/g,'');
+  const m = s.match(/(\d{1,4})[\/\-.](\d{1,2})[\/\-.](\d{1,4})/);
+  if(!m) return null;
+  let y,mo,d;
+  if(m[1].length===4){ y=m[1]; mo=m[2]; d=m[3]; }
+  else if(fmtSel==='mdy'){ mo=m[1]; d=m[2]; y=m[3]; }
+  else { d=m[1]; mo=m[2]; y=m[3]; }
+  if(String(y).length===2) y='20'+y;
+  mo=String(mo).padStart(2,'0'); d=String(d).padStart(2,'0');
+  const iso=`${y}-${mo}-${d}`;
+  return isNaN(Date.parse(iso))?null:iso;
+}
+function impBuild(){
+  const di=+$('imp-col-date').value, ai=+$('imp-col-amt').value, ni=+$('imp-col-desc').value;
+  const fmtSel=$('imp-datefmt').value, sign=$('imp-sign').value;
+  const out=[], skipped=[];
+  importRows.slice(1).forEach((r,idx)=>{
+    const date = impParseDate(r[di]||'', fmtSel);
+    const amtRaw = (r[ai]||'').replace(/[^0-9.\-]/g,'');
+    const amt = parseFloat(amtRaw);
+    if(!date || !amt || isNaN(amt)){ skipped.push(idx+2); return; }
+    let type;
+    if(sign==='all-exp') type='expense';
+    else if(sign==='neg-exp') type = amt<0?'expense':'income';
+    else type = amt<0?'income':'expense';
+    out.push({ tx_date:date, type, amount:Math.abs(amt),
+      account_id:$('imp-account').value, category_id:null,
+      note: ni>=0?(r[ni]||'').trim().slice(0,200)||null:null });
+  });
+  return {out,skipped};
+}
+function impPreview(){
+  const {out,skipped} = impBuild();
+  if(!out.length){ $('imp-preview').innerHTML='<p class="msg">No valid rows found — check column mapping and date format.</p>'; $('imp-go').style.display='none'; return; }
+  const sample = out.slice(0,5).map(t=>`<tr><td>${t.tx_date}</td><td>${t.type}</td><td>${fmt(t.amount)}</td><td>${esc(t.note||'')}</td></tr>`).join('');
+  $('imp-preview').innerHTML = `<table class="preview"><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th></tr>${sample}</table>
+    <p class="muted" style="margin-top:8px">${out.length} rows ready${skipped.length?`, ${skipped.length} skipped (unreadable)`:''}. Imported rows arrive uncategorised — tag them in Activity.</p>`;
+  $('imp-count').textContent = out.length;
+  $('imp-go').style.display='block';
+}
+async function impImport(){
+  const {out} = impBuild();
+  if(!out.length) return;
+  for(let i=0;i<out.length;i+=200){
+    const {error} = await sb.from('transactions').insert(out.slice(i,i+200));
+    if(error){ alert('Import stopped: '+error.message+` (${i} rows were imported)`); await refresh(); return; }
+  }
+  closeModal(); await refresh();
+  alert(out.length+' transactions imported.');
+}
+
+boot();
+
+</script>
+</body>
+</html>
