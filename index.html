@@ -555,9 +555,20 @@ function openAcctModal(id){
       </div>
       <p class="muted" style="margin-top:6px">Tracked value now: ${fmt(balances()[a.id], a.currency||'SGD')}. The difference is saved as Investment Gain/Loss — shown in history but kept out of your income &amp; spending stats.</p>` : ''}
     <button class="primary" onclick="saveAcct('${id||''}')">Save</button>
-    ${a?`<button class="danger" style="width:100%;margin-top:8px" onclick="toggleArchive('${a.id}',${!a.archived})">${a.archived?'Unarchive account':'Archive account'}</button>`:''}
+    ${a?`<button class="danger" style="width:100%;margin-top:8px" onclick="toggleArchive('${a.id}',${!a.archived})">${a.archived?'Unarchive account':'Archive account'}</button>
+    <button class="danger" style="width:100%;margin-top:4px" onclick="deleteAcct('${a.id}')">Delete account permanently</button>`:''}
   `);
   acctTypeHint();
+}
+async function deleteAcct(id){
+  const used = S.txns.filter(t=>t.account_id===id || t.transfer_account_id===id).length;
+  const msg = used
+    ? `This permanently deletes the account AND its ${used} transaction(s), including transfers touching it. If you just want it out of the way, use Archive instead. Delete anyway?`
+    : 'Delete this account permanently?';
+  if(!confirm(msg)) return;
+  const {error} = await sb.from('accounts').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
 }
 function acctTypeHint(){
   const t = $('ac-type').value;
@@ -712,7 +723,13 @@ function editBudget(catId, period){
     <label>Description (optional)</label>
     <input id="bud-note" value="${b?esc(b.note||''):''}" placeholder="${period==='month'?'e.g. groceries + eating out':'e.g. insurance, travel, gifts'}">
     <button class="primary" onclick="saveBudget('${catId}','${period}')">Save</button>
+    ${b?`<button class="danger" style="width:100%;margin-top:8px" onclick="deleteBudget('${b.id}')">Remove this budget</button>`:''}
   `);
+}
+async function deleteBudget(id){
+  const {error} = await sb.from('budgets').delete().eq('id',id);
+  if(error){ alert(error.message); return; }
+  closeModal(); await refresh();
 }
 async function saveBudget(catId, period){
   period = period==='year' ? 'year' : 'month';
