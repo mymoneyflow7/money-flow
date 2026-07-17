@@ -786,9 +786,14 @@ function openReport(){
   }).join('');
   const yearR = mk.slice(0,4);
   const ySpentR = {};
+  let yearSpendTot=0;
   S.txns.filter(t=>t.type==='expense' && !t.is_adjustment && t.tx_date.slice(0,4)===yearR).forEach(t=>{
-    if(t.category_id) ySpentR[t.category_id]=(ySpentR[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
+    const v = toBase(t.amount, accCur(t.account_id));
+    yearSpendTot += v;
+    if(t.category_id) ySpentR[t.category_id]=(ySpentR[t.category_id]||0)+v;
   });
+  const mBudsYearTot = S.budgets.filter(b=>(b.period||'month')==='month' && b.month.slice(0,4)===yearR)
+    .reduce((s,b)=>s+Number(b.amount),0);
   const yBudsR = S.budgets.filter(b=>b.period==='year' && b.month===yearR+'-01-01');
   let ybTot=0, ysTot=0;
   const yBudRows = yBudsR.map(b=>{
@@ -833,6 +838,12 @@ function openReport(){
       <div style="font-weight:600">Total yearly</div>
       <div style="font-weight:700"><span class="${ysTot>ybTot?'neg':''}">${fmt(ysTot)}</span> <span class="muted">/ ${fmt(ybTot)}</span></div>
     </div>`:''}
+    <label style="margin-top:18px">Full year ${yearR} — combined</label>
+    <div class="row" style="padding:5px 0"><div class="muted">Monthly budgets set in ${yearR} (all months added up)</div><div>${fmt(mBudsYearTot)}</div></div>
+    <div class="row" style="padding:5px 0"><div class="muted">Yearly budgets</div><div>${fmt(ybTot)}</div></div>
+    <div class="row" style="padding:5px 0;border-top:1px solid var(--border)"><div style="font-weight:600">Combined budget for ${yearR}</div><div style="font-weight:700">${fmt(mBudsYearTot+ybTot)}</div></div>
+    <div class="row" style="padding:5px 0"><div style="font-weight:600">Spent so far in ${yearR}</div>
+      <div style="font-weight:700" class="${yearSpendTot>(mBudsYearTot+ybTot)?'neg':'pos'}">${fmt(yearSpendTot)}</div></div>
     <p class="muted" style="margin-top:14px">Figures converted to ${base()}. Market-value updates and transfers not counted.</p>
   `);
 }
