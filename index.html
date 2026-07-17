@@ -986,6 +986,8 @@ function projExcluded(){
   try{ return new Set(JSON.parse(localStorage.getItem('mf_proj_excl')||'["CPF"]')); }
   catch(e){ return new Set(['CPF']); }
 }
+function projYears(){ const y=Number(localStorage.getItem('mf_proj_years')); return [5,10,20].includes(y)?y:5; }
+function setProjYears(y){ localStorage.setItem('mf_proj_years', y); openProjection(); }
 function toggleProjClass(label, on){
   const ex = projExcluded();
   if(on) ex.delete(label); else ex.add(label);
@@ -1020,12 +1022,16 @@ function openProjection(){
     if(ys.length) yset = S.budgets.filter(b=>b.period==='year' && b.month===ys[ys.length-1]); }
   const budMonthly = mBud + yset.reduce((s,b)=>s+Number(b.amount),0)/12;
   const save1 = avgInc-avgExp, save2 = avgInc-budMonthly;
+  const Y = projYears();
   const y0 = new Date().getFullYear();
   const labels=[], d1=[], d2=[];
-  for(let k=0;k<=5;k++){ labels.push(String(y0+k)); d1.push(Math.round(net0+save1*12*k)); d2.push(Math.round(net0+save2*12*k)); }
+  for(let k=0;k<=Y;k++){ labels.push(String(y0+k)); d1.push(Math.round(net0+save1*12*k)); d2.push(Math.round(net0+save2*12*k)); }
   openModal(`
-    <h2>Net worth — 5-year projection</h2>
-    <p class="muted">Simple projection: savings added monthly, no investment returns or property appreciation assumed.</p>
+    <h2>Net worth projection</h2>
+    <div class="seg" style="max-width:240px">
+      ${[5,10,20].map(y=>`<button class="${Y===y?'on':''}" onclick="setProjYears(${y})">${y} yrs</button>`).join('')}
+    </div>
+    <p class="muted" style="margin-top:10px">Simple projection: savings added monthly, no investment returns or property appreciation assumed.</p>
     <label>Count these in the starting net worth (${fmt(net0)}):</label>
     <div style="display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 10px">
       ${present.map(([l])=>`<label class="row" style="gap:6px;cursor:pointer;justify-content:flex-start">
@@ -1038,11 +1044,11 @@ function openProjection(){
     <div class="row" style="padding:5px 0"><div class="muted">Monthly budget (incl. yearly ÷ 12)</div><div>${fmt(budMonthly)}</div></div>
     <div class="row" style="padding:8px 0;border-top:1px solid var(--border)">
       <div><span style="color:#38bdf8">●</span> At current pace (${fmt(save1)}/mo)</div>
-      <div style="font-weight:700">${fmt(d1[5])}</div></div>
+      <div style="font-weight:700">${fmt(d1[Y])}</div></div>
     <div class="row" style="padding:5px 0">
       <div><span style="color:#4ade80">●</span> If you stick to budget (${fmt(save2)}/mo)</div>
-      <div style="font-weight:700">${fmt(d2[5])}</div></div>
-    <p class="muted" style="margin-top:10px">Sticking to budget would make a difference of ${fmt(Math.abs(d2[5]-d1[5]))} over 5 years.</p>
+      <div style="font-weight:700">${fmt(d2[Y])}</div></div>
+    <p class="muted" style="margin-top:10px">Sticking to budget would make a difference of ${fmt(Math.abs(d2[Y]-d1[Y]))} over ${Y} years.</p>
   `);
   if(typeof Chart!=='undefined'){
     if(projChart) projChart.destroy();
@@ -1065,7 +1071,7 @@ function renderMore(){
       <button onclick="openReport()">Monthly report</button>
       <button onclick="openAssetReport()">Assets</button>
       <button onclick="openLiabReport()">Liabilities</button>
-      <button onclick="openProjection()">5-year projection</button>
+      <button onclick="openProjection()">Projection</button>
     </div>
     <div class="card">
     <details open>
