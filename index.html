@@ -785,6 +785,38 @@ function openAssetReport(){
   }
 }
 
+let liabChart = null;
+function openLiabReport(){
+  const bal = balances();
+  const items=[]; let total=0, assets=0;
+  S.accounts.filter(a=>!a.archived).forEach(a=>{
+    const b = toBase(bal[a.id], a.currency||'SGD');
+    if(b<0){ items.push({name:a.name, type:a.type, cur:a.currency||'SGD', raw:bal[a.id], val:-b}); total+=-b; }
+    else assets+=b;
+  });
+  items.sort((x,y)=>y.val-x.val);
+  const palette=['#f87171','#fb923c','#fbbf24','#f472b6','#a78bfa','#94a3b8'];
+  openModal(`
+    <h2>Liabilities</h2>
+    <p class="muted">Everything you owe, converted to ${base()}.</p>
+    ${items.length?'<canvas id="chart-liab" height="220"></canvas>':''}
+    ${items.map((x,i)=>`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${palette[i%palette.length]};margin-right:8px"></span>${esc(x.name)}<div class="sub" style="margin-left:18px">${ACCT_TYPES[x.type]}</div></div>
+      <div style="text-align:right"><div style="font-weight:600">${fmt(Math.abs(x.raw), x.cur)}</div>
+        <div class="sub">${x.cur!==base()?'≈ '+fmt(x.val)+' · ':''}${Math.round(x.val/total*100)}%</div></div>
+    </div>`).join('')||'<p class="muted">Nothing owed — debt free.</p>'}
+    ${items.length?`
+      <div class="row" style="padding:10px 0"><div style="font-weight:600">Total owed</div><div class="neg" style="font-weight:700">${fmt(total)}</div></div>
+      <p class="muted">Assets ${fmt(assets)} · Net position ${fmt(assets-total)}${assets>0?` · Debt is ${Math.round(total/assets*100)}% of assets`:''}</p>`:''}
+  `);
+  if(items.length && typeof Chart!=='undefined'){
+    if(liabChart) liabChart.destroy();
+    liabChart = new Chart($('chart-liab'), {type:'doughnut',
+      data:{labels:items.map(x=>x.name), datasets:[{data:items.map(x=>x.val), backgroundColor:palette, borderWidth:0}]},
+      options:{plugins:{legend:{display:false}}}});
+  }
+}
+
 /* ============ MORE ============ */
 function renderMore(){
   const bal = balances();
@@ -792,7 +824,8 @@ function renderMore(){
     <div class="banner">Signed in as <b>${esc(S.user.email)}</b> — same login on laptop &amp; iPhone keeps everything in sync.</div>
     <div class="row2" style="margin-bottom:14px">
       <button onclick="openReport()">Monthly report</button>
-      <button onclick="openAssetReport()">Asset allocation</button>
+      <button onclick="openAssetReport()">Assets</button>
+      <button onclick="openLiabReport()">Liabilities</button>
     </div>
     <div class="card">
     <details open>
