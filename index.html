@@ -784,6 +784,24 @@ function openReport(){
         <span class="${diff<0?'neg':'pos'}" style="font-size:12px;font-weight:600">${diff<0?fmt(-diff)+' over':fmt(diff)+' left'}</span></div>
     </div>`;
   }).join('');
+  const yearR = mk.slice(0,4);
+  const ySpentR = {};
+  S.txns.filter(t=>t.type==='expense' && !t.is_adjustment && t.tx_date.slice(0,4)===yearR).forEach(t=>{
+    if(t.category_id) ySpentR[t.category_id]=(ySpentR[t.category_id]||0)+toBase(t.amount, accCur(t.account_id));
+  });
+  const yBudsR = S.budgets.filter(b=>b.period==='year' && b.month===yearR+'-01-01');
+  let ybTot=0, ysTot=0;
+  const yBudRows = yBudsR.map(b=>{
+    const c = catById(b.category_id); if(!c) return '';
+    const sp = ySpentR[b.category_id]||0, amt = Number(b.amount);
+    ybTot+=amt; ysTot+=sp;
+    const diff = amt-sp;
+    return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border)">
+      <div>${esc(c.name)}</div>
+      <div style="text-align:right">${fmt(sp)} <span class="muted">/ ${fmt(amt)}</span><br>
+        <span class="${diff<0?'neg':'pos'}" style="font-size:12px;font-weight:600">${diff<0?fmt(-diff)+' over':fmt(diff)+' left'}</span></div>
+    </div>`;
+  }).join('');
   const section = (obj,total,color)=>Object.entries(obj).sort((x,y)=>y[1]-x[1]).map(([n,v])=>`
     <div style="padding:8px 0;border-bottom:1px solid var(--border)">
       <div class="row"><div>${esc(n)}</div>
@@ -808,6 +826,12 @@ function openReport(){
     ${budRows?`<div class="row" style="padding:8px 0">
       <div style="font-weight:600">Total budgeted</div>
       <div style="font-weight:700"><span class="${sTot>bTot?'neg':''}">${fmt(sTot)}</span> <span class="muted">/ ${fmt(bTot)}</span></div>
+    </div>`:''}
+    <label style="margin-top:18px">Yearly budgets — ${yearR} (year-to-date)</label>
+    ${yBudRows||'<p class="muted">No yearly budgets set.</p>'}
+    ${yBudRows?`<div class="row" style="padding:8px 0">
+      <div style="font-weight:600">Total yearly</div>
+      <div style="font-weight:700"><span class="${ysTot>ybTot?'neg':''}">${fmt(ysTot)}</span> <span class="muted">/ ${fmt(ybTot)}</span></div>
     </div>`:''}
     <p class="muted" style="margin-top:14px">Figures converted to ${base()}. Market-value updates and transfers not counted.</p>
   `);
