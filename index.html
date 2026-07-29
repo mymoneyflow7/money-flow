@@ -529,6 +529,10 @@ async function saveTx(id){
     transfer_account_id: type==='transfer'?$('tx-to').value:null,
     transfer_amount: null };
   if(type==='transfer' && row.account_id===row.transfer_account_id){ alert('Choose two different accounts.'); return; }
+  if(row.tx_date.slice(0,4) !== todayStr().slice(0,4)){
+    const d = new Date(row.tx_date+'T00:00:00').toLocaleDateString('en-SG',{day:'numeric',month:'long',year:'numeric'});
+    if(!confirm(`This is dated ${d} — a different year from today. Save it with that date?`)) return;
+  }
   if(type==='transfer' && accCur(row.account_id)!==accCur(row.transfer_account_id)){
     const recv = parseFloat($('tx-amount2').value);
     if(!(recv>0)){ alert('Enter the amount received in '+accCur(row.transfer_account_id)+'.'); return; }
