@@ -143,7 +143,7 @@ table.preview td,table.preview th{border:1px solid var(--border); padding:4px 6p
 /* ============ CONFIG & INIT ============ */
 let sb = null;
 const S = { user:null, accounts:[], categories:[], txns:[], budgets:[], settings:{base_currency:'SGD', fx_rates:{}},
-  view:'dashboard', txnMonth:monthKey(new Date()), budMonth:monthKey(new Date()),
+  view:'dashboard', txnMonth:monthKey(new Date()), budMonth:monthKey(new Date()), txnAll:false,
   txnFilter:{account:'',category:'',type:'',q:''} };
 let charts = {};
 
@@ -213,7 +213,13 @@ async function loadAll(){
     sb.from('budgets').select('*'),
     sb.from('settings').select('*').maybeSingle()
   ]);
-  for(const r of [a,c,t,b]) if(r.error) { alert('Load error: '+r.error.message); return; }
+  const bad = [a,c,t,b].find(r=>r.error);
+  if(bad){
+    S.loadError = bad.error.message;   // never silently keep showing stale data
+    alert('Load error: '+bad.error.message+'\n\nThe screen may be out of date — reload the app.');
+    return;
+  }
+  S.loadError = null;
   S.accounts=a.data; S.categories=c.data; S.txns=t.data; S.budgets=b.data;
   if(st.data) S.settings = st.data;
 }
@@ -373,7 +379,7 @@ function drawCharts(mk){
 /* ============ TRANSACTIONS VIEW ============ */
 function renderTxns(){
   const mk = S.txnMonth, f = S.txnFilter;
-  let list = monthTxns(mk);
+  let list = S.txnAll ? S.txns.slice() : monthTxns(mk);
   if(f.account) list=list.filter(t=>t.account_id===f.account||t.transfer_account_id===f.account);
   if(f.category) list=list.filter(t=>t.category_id===f.category);
   if(f.type) list=list.filter(t=>t.type===f.type);
@@ -382,16 +388,23 @@ function renderTxns(){
   const byDate = {};
   list.forEach(t=>{ (byDate[t.tx_date]=byDate[t.tx_date]||[]).push(t); });
   const rows = Object.keys(byDate).sort().reverse().map(d=>{
-    const dl = new Date(d+'T00:00:00').toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short'});
-    return `<div class="datehdr">${dl}</div>` + byDate[d].map(txRow).join('');
+    const dl = new Date(d+'T00:00:00').toLocaleDateString('en-SG',{weekday:'short',day:'numeric',month:'short',year:S.txnAll?'numeric':undefined});
+    return `<div class="datehdr">${dl}</div>` + byDate[d].map(t=>{
+      try { return txRow(t); }
+      catch(e){ return `<div class="item"><div>Unreadable entry<div class="sub">${esc(t.tx_date||'')} · tap Export CSV to inspect</div></div><div class="muted">${esc(t.amount)}</div></div>`; }
+    }).join('');
   }).join('') || '<p class="muted" style="margin-top:20px">No transactions match.</p>';
+  const elsewhere = S.txnAll ? 0 : S.txns.length - monthTxns(mk).length;
 
   $('view-txns').innerHTML = `
+    ${S.loadError?`<div class="banner" style="border-color:var(--red)">Data could not be refreshed (${esc(S.loadError)}). What you see may be out of date — reload the app.</div>`:''}
     <div class="monthnav">
-      <button onclick="S.txnMonth=shiftMonth(S.txnMonth,-1);render()">‹</button>
-      <b>${monthLabel(mk)}</b>
-      <button onclick="S.txnMonth=shiftMonth(S.txnMonth,1);render()">›</button>
+      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,-1);render()">‹</button>
+      <b>${S.txnAll?'All transactions ('+S.txns.length+')':monthLabel(mk)}</b>
+      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,1);render()">›</button>
     </div>
+    <button class="link small" style="width:100%;margin-bottom:8px" onclick="S.txnAll=${S.txnAll?'false':'true'};render()">
+      ${S.txnAll?'← Back to monthly view':`Show all months${elsewhere>0?' ('+elsewhere+' more elsewhere)':''}`}</button>
     <div class="card"><div class="row2">
       <div><div class="muted">Income</div><div class="pos" style="font-weight:700">${fmt(inc)}</div></div>
       <div><div class="muted">Expenses</div><div class="neg" style="font-weight:700">${fmt(exp)}</div></div>
@@ -414,9 +427,13 @@ function renderTxns(){
         <option value="">All categories</option>
         ${S.categories.map(c=>`<option value="${c.id}" ${f.category===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
       </select>
-      <input placeholder="Search notes…" value="${esc(f.q)}" oninput="S.txnFilter.q=this.value;render()">
+      <input id="tx-search" placeholder="Search notes…" value="${esc(f.q)}" oninput="S.txnFilter.q=this.value;render()">
     </div>
-    <div class="card" style="margin-top:12px">${rows}</div>`;
+    ${f.account||f.category||f.type||f.q?`<button class="link small" onclick="S.txnFilter={account:'',category:'',type:'',q:''};render()">Filters are on — clear them</button>`:''}
+    <div class="card" style="margin-top:12px">${rows}</div>
+    <p class="muted" style="text-align:center;margin-top:8px">Showing ${list.length} of ${S.txns.length} transaction${S.txns.length===1?'':'s'} — this count should match your CSV export.</p>`;
+  // keep typing in the search box working (innerHTML rebuild drops focus)
+  if(f.q){ const el=$('tx-search'); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
 function txRow(t){
   const a = acctById(t.account_id);
@@ -433,7 +450,8 @@ function txRow(t){
       ? `<div class="pos" style="font-weight:600">+${fmt(t.amount,cur)}</div>`
       : `<div class="neg" style="font-weight:600">−${fmt(t.amount,cur)}</div>`;
   }
-  const sub = [t.type==='transfer'?'Transfer':(a?a.name:''), t.note].filter(Boolean).map(esc).join(' · ');
+  const tm = t.created_at ? new Date(t.created_at).toLocaleTimeString('en-SG',{hour:'2-digit',minute:'2-digit'}) : '';
+  const sub = [t.type==='transfer'?'Transfer':(a?a.name:''), t.note, tm].filter(Boolean).map(esc).join(' · ');
   return `<div class="item" onclick="openTxModal('${t.id}')">
     <div>${title}<div class="sub">${sub}</div></div>${amtHtml}</div>`;
 }
@@ -500,7 +518,9 @@ function setTxType(k){
   if(k!=='transfer') $('tx-category').innerHTML = catOptions(k,null);
   txCurChange();
 }
+let savingTx = false;
 async function saveTx(id){
+  if(savingTx) return;               // guard against double-tap creating two rows
   const type=$('tx-type').value, amount=parseFloat($('tx-amount').value);
   if(!(amount>0)){ alert('Enter an amount greater than 0.'); return; }
   const row = { type, amount, account_id:$('tx-account').value,
@@ -514,8 +534,9 @@ async function saveTx(id){
     if(!(recv>0)){ alert('Enter the amount received in '+accCur(row.transfer_account_id)+'.'); return; }
     row.transfer_amount = recv;
   }
-  const q = id ? sb.from('transactions').update(row).eq('id',id) : sb.from('transactions').insert(row);
-  const {error} = await q;
+  savingTx = true;
+  const {error} = await (id ? sb.from('transactions').update(row).eq('id',id) : sb.from('transactions').insert(row));
+  savingTx = false;
   if(error){ alert(error.message); return; }
   closeModal(); await refresh();
 }
