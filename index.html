@@ -398,11 +398,7 @@ function renderTxns(){
 
   $('view-txns').innerHTML = `
     ${S.loadError?`<div class="banner" style="border-color:var(--red)">Data could not be refreshed (${esc(S.loadError)}). What you see may be out of date — reload the app.</div>`:''}
-    <div class="monthnav">
-      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,-1);render()">‹</button>
-      <b>${S.txnAll?'All transactions ('+S.txns.length+')':monthLabel(mk)}</b>
-      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,1);render()">›</button>
-    </div>
+    <div style="text-align:center;font-weight:700;font-size:17px;padding:2px 0 6px">${S.txnAll?'All transactions ('+S.txns.length+')':monthLabel(mk)}</div>
     <button class="link small" style="width:100%;margin-bottom:8px" onclick="S.txnAll=${S.txnAll?'false':'true'};render()">
       ${S.txnAll?'← Back to monthly view':`Show all months${elsewhere>0?' ('+elsewhere+' more elsewhere)':''}`}</button>
     <div class="card"><div class="row2">
@@ -431,7 +427,12 @@ function renderTxns(){
     </div>
     ${f.account||f.category||f.type||f.q?`<button class="link small" onclick="S.txnFilter={account:'',category:'',type:'',q:''};render()">Filters are on — clear them</button>`:''}
     <div class="card" style="margin-top:12px">${rows}</div>
-    <p class="muted" style="text-align:center;margin-top:8px">Showing ${list.length} of ${S.txns.length} transaction${S.txns.length===1?'':'s'} — this count should match your CSV export.</p>`;
+    <p class="muted" style="text-align:center;margin-top:8px">Showing ${list.length} of ${S.txns.length} transaction${S.txns.length===1?'':'s'} — this count should match your CSV export.</p>
+    <div class="monthnav" style="margin:14px 0 0">
+      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,-1);render()">‹ Prev</button>
+      <b style="font-size:15px">${S.txnAll?'All':monthLabel(mk)}</b>
+      <button ${S.txnAll?'disabled style="opacity:.3"':''} onclick="S.txnMonth=shiftMonth(S.txnMonth,1);render()">Next ›</button>
+    </div>`;
   // keep typing in the search box working (innerHTML rebuild drops focus)
   if(f.q){ const el=$('tx-search'); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
 }
@@ -704,11 +705,7 @@ function renderBudgets(){
   }).join('');
   const yUnbudgeted = cats.filter(c=>!ybuds.some(b=>b.category_id===c.id));
   $('view-budgets').innerHTML = `
-    <div class="monthnav">
-      <button onclick="S.budMonth=shiftMonth(S.budMonth,-1);render()">‹</button>
-      <b>${monthLabel(mk)}</b>
-      <button onclick="S.budMonth=shiftMonth(S.budMonth,1);render()">›</button>
-    </div>
+    <div style="text-align:center;font-weight:700;font-size:17px;padding:2px 0 10px">${monthLabel(mk)}</div>
     <div class="card"><h3>Total</h3>
       <div class="row"><div class="big ${totalBud>0&&totalSpent>totalBud?'neg':''}">${fmt(totalSpent)}</div>
       <div class="muted">of ${fmt(totalBud)} budgeted</div></div>
@@ -730,6 +727,11 @@ function renderBudgets(){
         <option value="">Choose category</option>
         ${yUnbudgeted.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
       </select>`:''}
+    </div>
+    <div class="monthnav" style="margin:14px 0 0">
+      <button onclick="S.budMonth=shiftMonth(S.budMonth,-1);render()">‹ Prev</button>
+      <b style="font-size:15px">${monthLabel(mk)}</b>
+      <button onclick="S.budMonth=shiftMonth(S.budMonth,1);render()">Next ›</button>
     </div>`;
 }
 function budgetKey(period){ return period==='year' ? S.budMonth.slice(0,4)+'-01-01' : S.budMonth+'-01'; }
